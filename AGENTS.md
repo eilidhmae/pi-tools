@@ -11,7 +11,7 @@ the absence in their completion report — they do not guess at the contents.
 |------|-----------|--------|--------------|
 | Worker | One task, implementation only | Code, tests, per-task state | — |
 | Adversary | Verification of one work unit (read-only) | Nothing | Peer adversaries (quorum) |
-| Manager | Coordination of one lineage | Lineage drafts under `.pi/drafts/<LINEAGE_ID>/` (orchestrated) or canonical `CLAUDE.md` / `CHANGELOG.md` / `TODO.md` (standalone) | Workers, adversaries, research subagents |
+| Manager | Coordination of one lineage | Lineage drafts under `.pi/drafts/<LINEAGE_ID>/` (orchestrated) or canonical `PROJECT.md` / `CHANGELOG.md` / `TODO.md` (standalone) | Workers, adversaries, research subagents |
 | Orchestrator | Cross-lineage observability, reconciliation, commits | Merged canonical docs, manager prompts, commit messages | Managers, research subagents |
 
 The orchestrator is a centralized dispatcher with commit authority. This is a
@@ -22,9 +22,9 @@ single-session nature of pi operation.
 
 On every session start, in order:
 
-1. Read `CLAUDE.md` in the project root. If absent, the active agent follows
+1. Read `PROJECT.md` in the project root. If absent, the active agent follows
    its own spec for creating or proceeding without it.
-2. Read every document `CLAUDE.md` references, recursively.
+2. Read every document `PROJECT.md` references, recursively.
 3. Read `CHANGELOG.md` and `TODO.md` if they exist.
 4. Run `git log --oneline -20` and `git status`.
 5. Run the Mechanical Baseline (see below).
@@ -79,7 +79,7 @@ the current task re-runnable rather than losing branches of work.
 When a manager's dispatch prompt contains a `LINEAGE_ID`, the manager's writes
 to project-level documents are scoped to that lineage's draft directory:
 
-- `CLAUDE.md` updates → `.pi/drafts/<LINEAGE_ID>/CLAUDE-patch.md`
+- `PROJECT.md` updates → `.pi/drafts/<LINEAGE_ID>/PROJECT-patch.md`
 - `CHANGELOG.md` entries → `.pi/drafts/<LINEAGE_ID>/CHANGELOG-entries.md`
 - `TODO.md` updates → `.pi/drafts/<LINEAGE_ID>/TODO-updates.md`
 
@@ -96,7 +96,7 @@ directly to the canonical files.
   (`date -u +%Y-%m-%dT%H:%M:%SZ`), not worker finish time.
 - `TODO-updates.md` — two sections: `### Move to Done` and `### Add to Active`,
   one bullet per item.
-- `CLAUDE-patch.md` — free-form prose describing the proposed change; the
+- `PROJECT-patch.md` — free-form prose describing the proposed change; the
   orchestrator applies with judgment.
 
 ## Payload-by-Reference

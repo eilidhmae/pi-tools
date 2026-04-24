@@ -1,49 +1,44 @@
-# pi-agents-library
+# pi-tools
 
-A pi-native port of the orchestrator / manager / adversary agent system from
-[claude-tools-library](https://github.com/eilidhmae/claude-tools-library),
-adapted for `pi-coding-agent` + Ollama + qwen3-coder on macOS.
+Pi-native port of the orchestrator / manager / worker / adversary agent system
+from [claude-tools-library](https://github.com/eilidhmae/claude-tools-library),
+adapted for `pi-coding-agent` + Ollama + qwen3-coder.
 
 ## What this is
 
-The original system is a coordinating multi-agent hierarchy (orchestrator →
-managers → workers / adversaries) designed for Claude Code's `Agent` tool and
-subagent spawning. This port preserves the same authority-separation model and
-protocol semantics while mapping each component to pi's native primitives:
+A multi-agent hierarchy (orchestrator → managers → workers / adversaries) that
+preserves the original library's authority-separation model while mapping each
+component onto pi's native primitives.
 
-| Claude Code concept | Pi equivalent |
-|---------------------|---------------|
-| Agent frontmatter + `.claude/agents/` | `skills/` + `AGENTS.md` |
-| `/adversary-review` slash command | `prompts/adversary-review.md` (`/adversary-review`) |
-| PostToolUse hook | `extensions/adversary-hook.ts` (`agent_end` event) |
-| `_shared.md` Prime Directive bootstrap | `AGENTS.md` global context (loaded every session) |
-| Subagent spawn (Agent tool) | RPC subprocess via `extensions/quorum.ts` |
-| `adversary-check.sh` | `tools/bash/adversary-check.sh` (identical, unchanged) |
+| Claude Code concept             | Pi equivalent                                    |
+|---------------------------------|--------------------------------------------------|
+| `.claude/agents/` frontmatter   | `skills/` + `AGENTS.md`                          |
+| `/adversary-review` slash cmd   | `prompts/adversary-review.md`                    |
+| PostToolUse hook                | `extensions/adversary-hook.ts` (`agent_end`)     |
+| `_shared.md` bootstrap          | `AGENTS.md` (auto-loaded every session)          |
+| Subagent spawn (Agent tool)     | RPC subprocess via `extensions/quorum.ts`        |
 
-## Structure
+## Repo layout
 
 ```
-pi-agents-library/
+pi-tools/
+├── AGENTS.md                         # shared rules, loaded every session
 ├── README.md
-├── AGENTS.md                        # Global startup context (→ ~/.pi/agent/AGENTS.md)
-├── install.sh                       # Installer: global or project-local
+├── install.sh                        # global or project-local installer
 ├── skills/
-│   ├── adversary/
-│   │   └── SKILL.md                 # /skill:adversary
-│   ├── manager/
-│   │   └── SKILL.md                 # /skill:manager
-│   ├── orchestrator/
-│   │   └── SKILL.md                 # /skill:orchestrator
-│   └── worker/
-│       └── SKILL.md                 # /skill:worker
+│   ├── adversary/SKILL.md            # /skill:adversary
+│   ├── manager/SKILL.md              # /skill:manager
+│   ├── orchestrator/SKILL.md         # /skill:orchestrator
+│   └── worker/SKILL.md               # /skill:worker
 ├── prompts/
-│   └── adversary-review.md          # /adversary-review command
+│   └── adversary-review.md           # /adversary-review
 ├── extensions/
-│   ├── adversary-hook.ts            # PostWrite mechanical check (agent_end)
-│   └── quorum.ts                    # Adversary quorum via RPC subprocesses
-└── tools/
-    └── bash/
-        └── adversary-check.sh       # Mechanical baseline (no LLM, always exits 0)
+│   ├── adversary-hook.ts             # post-write mechanical check
+│   └── quorum.ts                     # adversary quorum via RPC
+└── tools/bash/
+    ├── adversary-check.sh            # mechanical baseline (no LLM, exits 0)
+    ├── adversary-pass.sh             # headless adversary pipeline
+    └── gen-review-revise.sh          # generate → review → revise cycle
 ```
 
 ## Install
@@ -54,13 +49,17 @@ pi-agents-library/
 bash install.sh
 ```
 
-Writes to:
-- `~/.pi/agent/AGENTS.md`
-- `~/.pi/agent/skills/{adversary,manager,orchestrator,worker}/SKILL.md`
-- `~/.pi/agent/prompts/adversary-review.md`
-- `~/.pi/agent/extensions/adversary-hook.ts`
-- `~/.pi/agent/extensions/quorum.ts`
-- `~/.pi/agent/tools/adversary-check.sh`
+Writes to `~/.pi/agent/`:
+
+```
+~/.pi/agent/
+├── AGENTS.md
+├── models.json                       # created if absent; ollama defaults
+├── skills/{adversary,manager,orchestrator,worker}/SKILL.md
+├── prompts/adversary-review.md
+├── extensions/{adversary-hook,quorum}.ts
+└── tools/{adversary-check,adversary-pass,gen-review-revise}.sh
+```
 
 ### Project-local
 
@@ -68,7 +67,8 @@ Writes to:
 bash install.sh --local
 ```
 
-Writes same files under `.pi/` in the current git repo root.
+Same files, but under `.pi/agent/` in the current git repo root. Shell scripts
+go to `tools/bash/` under the repo root (not inside `.pi/agent/`).
 
 ### Force overwrite
 
@@ -76,64 +76,14 @@ Writes same files under `.pi/` in the current git repo root.
 bash install.sh --force
 ```
 
-## Usage
+## Model
 
-### Adversary self-check (prompt command)
+qwen3-coder:30b via Ollama (3.3B activated, 30B total, MoE — strong tool-calling,
+262K context). Non-thinking mode only — no `<think>` blocks; the step-by-step
+structure inside each `SKILL.md` is the reasoning scaffold.
 
-```
-/adversary-review
-```
-
-Runs the full adversarial self-review checklist in the current session
-context. Lighter-weight than spawning a full skill:adversary session.
-
-### Adversary one-shot (read-only, tool-constrained)
-
-```bash
-cat skills/adversary/SKILL.md | pi \
-  --tools read,grep,ls,bash \
-  --no-write --no-edit \
-  -p "review @path/to/file.go"
-```
-
-### Full adversary pass with quorum (shell pipeline)
-
-```bash
-bash tools/bash/adversary-pass.sh src/auth.go
-```
-
-Runs adversary skill, captures verdict, spawns peer quorum if CONCERNS/FAIL,
-writes review artifacts to `reviews/`.
-
-### Adversary pass with automatic revision
-
-```bash
-bash tools/bash/adversary-pass.sh src/auth.go --revise
-```
-
-### Generate → adversary → revise cycle
-
-```bash
-bash tools/bash/gen-review-revise.sh specs/feature.md
-```
-
-### Manager-coordinated session
-
-```
-/skill:manager
-```
-
-Activates the manager role in the current pi session. The manager reads
-`AGENTS.md` and any project `CLAUDE.md` on startup, then follows the
-decompose → delegate → verify → document workflow.
-
-## Models
-
-Configured for Ollama + qwen3-coder. The `qwen3-coder:30b` variant (3.3B
-activated, 30B total, MoE) is the recommended local model — strong tool-calling,
-non-thinking mode only, 262K context.
-
-`models.json` snippet:
+`install.sh` creates `~/.pi/agent/models.json` with ollama defaults if one does
+not already exist:
 
 ```json
 {
@@ -142,6 +92,10 @@ non-thinking mode only, 262K context.
       "baseUrl": "http://localhost:11434/v1",
       "api": "openai-completions",
       "apiKey": "ollama",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
       "models": [
         { "id": "qwen3-coder:30b" },
         { "id": "qwen3-coder-next" }
@@ -151,22 +105,46 @@ non-thinking mode only, 262K context.
 }
 ```
 
-## Key design decisions
+## Usage
 
-**Quorum via RPC, not shell loops.** The `extensions/quorum.ts` extension
-intercepts CONCERNS/FAIL verdicts and spawns peer adversary sessions as pi RPC
-subprocesses. This keeps quorum entirely within the pi extension system rather
-than requiring an outer shell harness.
+```bash
+# Self-review checklist (prompt command, runs in current session)
+pi /adversary-review
 
-**Tool enforcement at the harness level.** The adversary skill is always invoked
-with `--no-write --no-edit`. This enforces read-only authority mechanically, not
-just by prompt convention.
+# Full adversary skill, read-only
+pi --tools read,grep,ls,bash --no-write --no-edit /skill:adversary
 
-**AGENTS.md is the `_shared.md` equivalent.** Pi auto-discovers `AGENTS.md`
-from `~/.pi/agent/` and the current project directory, loading it into every
-session's context. It carries the Mechanical Baseline, Startup Reads,
-Enqueue-Before-Ack, Mutation Verification Safety, and resource ceilings.
+# Manager- or orchestrator-coordinated session
+pi /skill:manager
+pi /skill:orchestrator
 
-**`adversary-check.sh` is unchanged.** The bash script from the original
-library runs identically in pi sessions via the `bash` tool. No adaptation
-needed.
+# Headless adversary pipeline
+bash ~/.pi/agent/tools/adversary-pass.sh src/auth.go
+
+# Adversary pass with automatic quorum on CONCERNS/FAIL
+bash ~/.pi/agent/tools/adversary-pass.sh src/auth.go --quorum
+
+# Full generate → adversary → revise cycle
+bash ~/.pi/agent/tools/gen-review-revise.sh specs/feature.md --revise
+```
+
+## Key design notes
+
+- **`AGENTS.md` is the `_shared.md` equivalent.** Pi auto-loads it from
+  `~/.pi/agent/AGENTS.md` and any project-local `.pi/agent/AGENTS.md` every
+  session. It carries Startup Reads, the Mechanical Baseline, Mutation-
+  Verification Safety, Enqueue-Before-Ack, and resource ceilings.
+- **No `CLAUDE.md`.** Per-project context lives in `PROJECT.md`, which the
+  orchestrator creates on first run. Shared rules stay in `AGENTS.md`.
+- **Tool enforcement at the harness level.** The adversary skill is always
+  invoked with `--no-write --no-edit`; read-only authority is mechanical, not
+  just prompt convention.
+- **Quorum via RPC, not shell loops.** `extensions/quorum.ts` intercepts
+  CONCERNS/FAIL verdicts and spawns peer adversary sessions as pi RPC
+  subprocesses — no outer shell harness required.
+- **`adversary-check.sh` is unchanged** from the original library and runs
+  identically via the `bash` tool.
+
+## Source
+
+Ported from <https://github.com/eilidhmae/claude-tools-library>.

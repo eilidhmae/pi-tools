@@ -8,12 +8,12 @@ documentation.
 
 1. You are the manager.
 2. Read the full documents.
-3. Start with `CLAUDE.md` and any documents it references.
+3. Start with `PROJECT.md` and any documents it references.
 4. Read `AGENTS.md` (`.pi/agent/AGENTS.md` or `~/.pi/agent/AGENTS.md`).
 5. Keep project documents up-to-date as you work — scoped per AGENTS.md →
    Lineage-Scoped Writes. With a `LINEAGE_ID` in your dispatch prompt, writes
    go to `.pi/drafts/<LINEAGE_ID>/`. Without one, write to canonical
-   `CLAUDE.md` / `CHANGELOG.md` / `TODO.md`.
+   `PROJECT.md` / `CHANGELOG.md` / `TODO.md`.
 6. Always follow TDD.
 7. Always use worker subagents (via `/skill:worker` + pi RPC dispatch, or by
    delegating to a human-facing task queue if subagent spawning is unavailable).
@@ -27,14 +27,14 @@ documentation.
 
 Two modes, detected by whether the dispatch prompt contains a `LINEAGE_ID`:
 
-- **Standalone** (no `LINEAGE_ID`): write canonical `CLAUDE.md` /
+- **Standalone** (no `LINEAGE_ID`): write canonical `PROJECT.md` /
   `CHANGELOG.md` / `TODO.md` directly; own commits for completed work.
 - **Orchestrated** (`LINEAGE_ID` present): write lineage-scoped drafts under
   `.pi/drafts/<LINEAGE_ID>/`; do not commit; report draft paths to orchestrator.
 
 ## Startup Protocol
 
-Follow AGENTS.md → Startup Reads: read `CLAUDE.md` and references,
+Follow AGENTS.md → Startup Reads: read `PROJECT.md` and references,
 `CHANGELOG.md`, `TODO.md`, run `git log --oneline -20`, `git status`,
 and the Mechanical Baseline.
 
@@ -43,16 +43,16 @@ session, read it — that is your own prior state resuming.
 
 ## Document Management
 
-Three canonical documents form shared project state: `CLAUDE.md`,
+Three canonical documents form shared project state: `PROJECT.md`,
 `CHANGELOG.md`, `TODO.md`.
 
-### CLAUDE.md
+### PROJECT.md
 
 Contains: project overview, architecture, key conventions, build/test commands,
 file structure, references to other documents.
 
 **Size budget: hard ceiling ~8 KB / ~120 lines.** Before adding, run
-`wc -c CLAUDE.md`. If near the ceiling, compress or migrate before adding.
+`wc -c PROJECT.md`. If near the ceiling, compress or migrate before adding.
 
 **One-line-per-reference rule.** Table cells are pointers, not summaries.
 Narratives belong in the referenced file.
@@ -61,7 +61,7 @@ Narratives belong in the referenced file.
 do not copy it.
 
 **The "turn-1" test.** Would a fresh session need this on its very first turn?
-If no, it goes in `phases.md` / `TODO.md` / a plan file — not `CLAUDE.md`.
+If no, it goes in `phases.md` / `TODO.md` / a plan file — not `PROJECT.md`.
 
 ### CHANGELOG.md
 
@@ -191,7 +191,7 @@ Adversary returns CONCERNS or FAIL
 Before every commit, in order:
 
 1. Enqueue-before-ack: append to `CHANGELOG.md`, move completed items to Done
-   in `TODO.md`, update `CLAUDE.md` if structure/conventions changed.
+   in `TODO.md`, update `PROJECT.md` if structure/conventions changed.
 2. Run the Mechanical Baseline.
 3. Run the full test suite. Do not commit on a red build.
 4. Inspect the diff: `git status`, `git diff --stat HEAD`, `git diff HEAD`.

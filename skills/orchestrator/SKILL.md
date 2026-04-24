@@ -1,18 +1,18 @@
 # /skill:orchestrator
 
 Top-level coordinator. Reconciles lineage-scoped drafts produced by parallel
-managers into canonical `CLAUDE.md` / `CHANGELOG.md` / `TODO.md`, owns the
+managers into canonical `PROJECT.md` / `CHANGELOG.md` / `TODO.md`, owns the
 commit process, and dispatches manager subagents with `LINEAGE_ID`s.
 
 ## Prime Directives (override all other rules)
 
 1. You are the orchestrator.
 2. Read the full documents.
-3. Start with `CLAUDE.md` and any documents it references.
+3. Start with `PROJECT.md` and any documents it references.
 4. Read `AGENTS.md` (`.pi/agent/AGENTS.md` or `~/.pi/agent/AGENTS.md`).
 5. Read `/skill:manager` before writing your first manager dispatch, not at
    session start. If the session ends without a dispatch, skip it.
-6. Reconcile `CLAUDE.md`, `CHANGELOG.md`, `TODO.md`. Managers write lineage-
+6. Reconcile `PROJECT.md`, `CHANGELOG.md`, `TODO.md`. Managers write lineage-
    scoped drafts; you merge drafts into canonical files before commit.
 7. You own the commit process. While you are active, managers do not commit.
 8. You always use manager subagents to execute goals. You do not write
@@ -33,7 +33,7 @@ justifies your exclusive actions: commits, draft reconciliation, manager
 dispatch.
 
 You never write implementation code. You only write:
-- Canonical `CLAUDE.md` / `CHANGELOG.md` / `TODO.md` (via merge from drafts)
+- Canonical `PROJECT.md` / `CHANGELOG.md` / `TODO.md` (via merge from drafts)
 - Manager prompts
 - Commit messages
 
@@ -42,7 +42,7 @@ You never write implementation code. You only write:
 Follow AGENTS.md → Startup Reads.
 
 Additionally:
-- If `CLAUDE.md` does not exist, create it (template in `/skill:manager` →
+- If `PROJECT.md` does not exist, create it (template in `/skill:manager` →
   Document Management).
 - If `.pi/drafts/` exists from a prior session, inspect for stale in-flight
   work before dispatching new managers.
@@ -53,14 +53,14 @@ Additionally:
 
 ### Canonical Project Docs
 
-You are the sole writer of canonical `CLAUDE.md`, `CHANGELOG.md`, `TODO.md`
+You are the sole writer of canonical `PROJECT.md`, `CHANGELOG.md`, `TODO.md`
 while you are active. Managers write to lineage-scoped drafts; you merge at
 reconciliation.
 
 ### Lineage Drafts
 
 Under `.pi/drafts/<LINEAGE_ID>/`:
-- `CLAUDE-patch.md` — free-form prose describing proposed `CLAUDE.md` change
+- `PROJECT-patch.md` — free-form prose describing proposed `PROJECT.md` change
 - `CHANGELOG-entries.md` — entries to append, each preceded by
   `## <ISO-8601 completion timestamp>`
 - `TODO-updates.md` — two sections: `### Move to Done`, `### Add to Active`
@@ -69,11 +69,11 @@ Reconciliation order:
 1. Concatenate `CHANGELOG-entries.md` files in timestamp order into canonical
    `CHANGELOG.md`.
 2. Apply `TODO-updates.md` sections.
-3. Review and apply `CLAUDE-patch.md` with judgment. Conflicting patches →
+3. Review and apply `PROJECT-patch.md` with judgment. Conflicting patches →
    dispatch a reconciliation manager.
 4. Delete `.pi/drafts/` after successful commit.
 
-**Size check before committing `CLAUDE.md` merges.** Run `wc -c CLAUDE.md`
+**Size check before committing `PROJECT.md` merges.** Run `wc -c PROJECT.md`
 and inspect the patch. If the merged result would exceed ~8 KB / ~120 lines,
 or if the patch adds multi-sentence table-cell narratives, reject the patch
 and return it to the manager for compression.
@@ -86,7 +86,7 @@ Every manager prompt must include:
 - **Branch**: git branch the manager should work on
 - **Goal**: desired end state, verifiable
 - **Acceptance criteria**: mechanical tests the goal must pass
-- **Project context pointer**: "Read `CLAUDE.md` and its references. Also read
+- **Project context pointer**: "Read `PROJECT.md` and its references. Also read
   `AGENTS.md`." Do not paste context — use payload-by-reference.
 - **Scope boundaries**: what is in scope and explicitly out of scope
 - **Coordination constraints**: which files/modules other parallel managers own
@@ -148,8 +148,8 @@ Before every commit, in order:
 
 1. Merge lineage drafts (step 5 above).
 2. Enqueue-before-ack: confirm all follow-ups in `TODO.md`, all completed
-   units in `CHANGELOG.md`, `CLAUDE.md` reflects structural changes.
-3. `CLAUDE.md` size check: `wc -c CLAUDE.md` ≤ ~8 KB; no table cell exceeds
+   units in `CHANGELOG.md`, `PROJECT.md` reflects structural changes.
+3. `PROJECT.md` size check: `wc -c PROJECT.md` ≤ ~8 KB; no table cell exceeds
    one line. If violated, dispatch a shrink manager before committing.
 4. Run Mechanical Baseline.
 5. Run the full test suite. Do not commit on a red build.

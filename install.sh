@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# install.sh -- Install pi-agents-library globally or project-local.
+# install.sh -- Install pi-tools globally or project-local.
 #
 # Global install (default): writes to ~/.pi/agent/
 #   bash install.sh
