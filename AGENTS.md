@@ -1,0 +1,137 @@
+# Agent Context
+
+Loaded automatically by pi from `~/.pi/agent/AGENTS.md` and any project-local
+`.pi/agent/AGENTS.md`. All agents in this system read this file as their shared
+rule set. If this file is absent, agents proceed with degraded context and note
+the absence in their completion report — they do not guess at the contents.
+
+## Authority Separation
+
+| Role | Authority | Writes | Delegates To |
+|------|-----------|--------|--------------|
+| Worker | One task, implementation only | Code, tests, per-task state | — |
+| Adversary | Verification of one work unit (read-only) | Nothing | Peer adversaries (quorum) |
+| Manager | Coordination of one lineage | Lineage drafts under `.pi/drafts/<LINEAGE_ID>/` (orchestrated) or canonical `PROJECT.md` / `CHANGELOG.md` / `TODO.md` (standalone) | Workers, adversaries, research subagents |
+| Orchestrator | Cross-lineage observability, reconciliation, commits | Merged canonical docs, manager prompts, commit messages | Managers, research subagents |
+
+The orchestrator is a centralized dispatcher with commit authority. This is a
+deliberate deviation from Grail's decentralized model, justified by the bounded,
+single-session nature of pi operation.
+
+## Startup Reads
+
+On every session start, in order:
+
+1. Read `PROJECT.md` in the project root. If absent, the active agent follows
+   its own spec for creating or proceeding without it.
+2. Read every document `PROJECT.md` references, recursively.
+3. Read `CHANGELOG.md` and `TODO.md` if they exist.
+4. Run `git log --oneline -20` and `git status`.
+5. Run the Mechanical Baseline (see below).
+
+Before accepting any goal, hold a clear internal picture of project
+architecture, current state, recent commits, pending work, and any flags from
+the Mechanical Baseline.
+
+## Mechanical Baseline
+
+Run when assessing project state — on startup, before commits, and during
+adversary reviews:
+
+```bash
+bash tools/bash/adversary-check.sh . || bash ~/.pi/agent/tools/adversary-check.sh .
+```
+
+The script **always exits 0**. Findings are in stdout — do not gate on exit
+code. Read the output and act on the flags it raises.
+
+## Mutation Verification Safety
+
+Applies to any agent running bash when verifying behaviour by mutating a file.
+
+**Banned commands during mutation revert** (they operate on the whole working
+tree and will destroy uncommitted edits from other work in the session):
+
+- `git checkout -- <file>`
+- `git checkout <ref> -- <file>`
+- `git restore <file>`
+- `git reset --hard` (any form)
+- `git stash` (any form)
+
+**Safe pattern:** apply the mutation with the `edit` tool, run the test to
+confirm the expected failure or pass, then call `edit` again with the opposite
+change to revert. Agents without write access do not perform mutations; they
+report what must be demonstrated and the manager dispatches a worker.
+
+## Enqueue-Before-Ack
+
+Persist next-actions before closing the current one. Update `TODO.md` with
+follow-up tasks and append to `CHANGELOG.md` **before** marking work as done
+or committing.
+
+Rationale: if an agent closes a task and then fails before recording the
+follow-up, the follow-up is lost silently. Ordering the writes the other way —
+persist next, then close current — ensures a crash between the two steps leaves
+the current task re-runnable rather than losing branches of work.
+
+## Lineage-Scoped Writes
+
+When a manager's dispatch prompt contains a `LINEAGE_ID`, the manager's writes
+to project-level documents are scoped to that lineage's draft directory:
+
+- `PROJECT.md` updates → `.pi/drafts/<LINEAGE_ID>/PROJECT-patch.md`
+- `CHANGELOG.md` entries → `.pi/drafts/<LINEAGE_ID>/CHANGELOG-entries.md`
+- `TODO.md` updates → `.pi/drafts/<LINEAGE_ID>/TODO-updates.md`
+
+The orchestrator merges drafts into canonical files at reconciliation, then
+deletes the drafts directory.
+
+When no `LINEAGE_ID` is present (standalone manager), the manager writes
+directly to the canonical files.
+
+**File shapes for deterministic merge:**
+
+- `CHANGELOG-entries.md` — each entry preceded by `## <ISO-8601 completion
+  timestamp>` for ordering. Timestamp captured at draft-write time
+  (`date -u +%Y-%m-%dT%H:%M:%SZ`), not worker finish time.
+- `TODO-updates.md` — two sections: `### Move to Done` and `### Add to Active`,
+  one bullet per item.
+- `PROJECT-patch.md` — free-form prose describing the proposed change; the
+  orchestrator applies with judgment.
+
+## Payload-by-Reference
+
+When briefing a worker, adversary, or manager, cite file paths, line numbers,
+and commit SHAs. Do not paste file contents inline unless the snippet is short
+and the reader would otherwise need to read an outsized file for a single line
+of context.
+
+Rationale: inline state grows with task count and burns context proportionally.
+A path reference is O(1) in prompt size regardless of project size.
+
+## Known Limitations and Resource Ceilings
+
+- **Re-dispatch cap (orchestrator):** at most 2 retries per goal (3 attempts
+  total). Hitting the cap triggers escalation to human.
+- **Adversary cap (manager):** at most 3 manager-spawned adversaries per work
+  unit. The adversary's own internal peer quorum (via `extensions/quorum.ts`)
+  is independent and capped at 3 total reviewers.
+- **Worker fanout (manager):** at most 6 parallel workers per dispatch wave.
+  If decomposition requires more, serialize waves.
+- **Observability:** no persistent event log across sessions beyond
+  `CHANGELOG.md` and git history.
+
+## Pi-Specific Notes
+
+**Tool enforcement:** the adversary skill is always invoked with
+`--no-write --no-edit` at the harness level. The `--tools read,grep,ls,bash`
+flag constrains what the model can call. Role definitions also prohibit writing,
+but harness enforcement is the primary guarantee.
+
+**Quorum:** handled by `extensions/quorum.ts`, which intercepts CONCERNS/FAIL
+verdicts and spawns peer adversary sessions as pi RPC subprocesses. The
+`QUORUM_PEER` token prevents recursion.
+
+**qwen3-coder note:** this model does not generate `<think>` blocks. The
+step-by-step structure in skill prompts acts as the reasoning scaffold. Do not
+attempt to enable thinking mode — it is not supported.
