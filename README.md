@@ -83,27 +83,8 @@ qwen3-coder:30b via Ollama (3.3B activated, 30B total, MoE — strong tool-calli
 structure inside each `SKILL.md` is the reasoning scaffold.
 
 `install.sh` creates `~/.pi/agent/models.json` with ollama defaults if one does
-not already exist:
-
-```json
-{
-  "providers": {
-    "ollama": {
-      "baseUrl": "http://localhost:11434/v1",
-      "api": "openai-completions",
-      "apiKey": "ollama",
-      "compat": {
-        "supportsDeveloperRole": false,
-        "supportsReasoningEffort": false
-      },
-      "models": [
-        { "id": "qwen3-coder:30b" },
-        { "id": "qwen3-coder-next" }
-      ]
-    }
-  }
-}
-```
+not already exist. See the heredoc in [`install.sh`](install.sh) (around
+line 144) for the exact block written.
 
 ## Usage
 
