@@ -2,6 +2,10 @@
 # launch.sh — start the MOLA multi-LoRA server on :8080.
 # Reads the same adapters.conf as the default track for adapter listing.
 #
+# Venv isolation: MOLA's install patches mlx-lm in-place. We use a separate
+# venv ($HOME/.pi/agent/venv-mola by default) so the shared mlx-lm-multi
+# venv stays unmodified. Override with PY_ENV if you really mean to share.
+#
 # This is alpha; see ../HEALTH.md for fallback procedure.
 
 set -euo pipefail
@@ -14,19 +18,45 @@ MOLA_DIR="${MOLA_DIR:-$HOME/src/mola}"
 MOLA_REPO="${MOLA_REPO:-https://github.com/Goekdeniz-Guelmez/mlx-lm-mola}"
 BASE_MODEL_DIR="${BASE_MODEL_DIR:-$HOME/models/qwen3-coder-7b-4bit}"
 PORT="${PROXY_PORT:-8080}"
-PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv}"
+# Isolated venv — the MOLA install patches mlx-lm in-place; do NOT share with
+# the mlx-lm-multi venv.
+PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv-mola}"
 
 mkdir -p "$PIDS_DIR" "$LOG_DIR"
 
-# shellcheck disable=SC1091
-source "$PY_ENV/bin/activate"
+# Create the isolated mola venv on first run. Sentinel file marks
+# successful completion of the install step — re-runs that find the
+# directory but no sentinel will retry the install rather than
+# silently activating a half-populated venv.
+SENTINEL="$PY_ENV/.install-complete"
+if [[ ! -f "$SENTINEL" ]]; then
+    if [[ -d "$PY_ENV" ]]; then
+        echo "==> mola venv exists at $PY_ENV but install was incomplete; reinstalling"
+    else
+        echo "==> creating isolated mola venv at $PY_ENV"
+        uv venv "$PY_ENV" --python 3.12
+    fi
+    # shellcheck disable=SC1091
+    source "$PY_ENV/bin/activate"
+    uv pip install --upgrade \
+        'mlx-lm>=0.20.0' \
+        'huggingface_hub[cli]>=0.24' \
+        'fastapi>=0.110' \
+        'uvicorn>=0.30' \
+        'pyyaml>=6.0' \
+        'packaging>=23.0'
+    : > "$SENTINEL"
+else
+    # shellcheck disable=SC1091
+    source "$PY_ENV/bin/activate"
+fi
 
 if [[ ! -d "$MOLA_DIR/.git" ]]; then
     echo "==> cloning MOLA → $MOLA_DIR"
     git clone --depth 1 "$MOLA_REPO" "$MOLA_DIR"
     pushd "$MOLA_DIR" >/dev/null
     if [[ -f patches/mlx-lm.patch ]]; then
-        echo "==> applying mlx-lm patch"
+        echo "==> applying mlx-lm patch (inside isolated venv $PY_ENV)"
         # User must verify this patch path against upstream before relying on it.
         ( cd "$(python -c 'import mlx_lm, os; print(os.path.dirname(mlx_lm.__file__))')" \
           && patch -p1 < "$MOLA_DIR/patches/mlx-lm.patch" ) || {

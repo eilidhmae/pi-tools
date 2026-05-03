@@ -47,7 +47,7 @@ function captureDir(): string {
 }
 
 function findingKey(f: Finding): string {
-  return `${f.file}:${f.line}-${f.line_end}:${f.category}`;
+  return `${f.file}:${f.line}:${f.category}`;
 }
 
 function consensusFindings(reviews: AdversaryReview[]): Finding[] {

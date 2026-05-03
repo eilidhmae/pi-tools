@@ -91,8 +91,10 @@ Two layers compose:
 The orchestrator never selects an adapter for itself — it runs on the bare
 `qwen3-coder-7b` (or `qwen3-coder:30b` on the legacy Ollama path) so that
 its broad coverage is preserved for cross-lineage reasoning. Managers
-and workers may run with any adapter. Adversaries always run with the
-`+adversary` adapter when one is installed; otherwise the base.
+and workers may run with any adapter. Adversaries can run with the
+`+adversary` adapter via the `--adapter` flag in `adversary-pass.sh` (or
+`--model qwen3-coder-7b+adversary` directly); this is operator-opted-in
+and the harness does not auto-detect or auto-switch.
 
 The pi harness reads the model id from `--model` and routes via
 `models.json`. Today's Ollama-only deployments are unaffected: skip the

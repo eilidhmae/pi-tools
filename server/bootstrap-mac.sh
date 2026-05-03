@@ -45,20 +45,33 @@ source "$PY_ENV/bin/activate"
 say "Installing mlx-lm, huggingface_hub, fastapi, uvicorn…"
 uv pip install --upgrade \
     'mlx-lm>=0.20.0' \
-    'huggingface_hub>=0.24' \
+    'huggingface_hub[cli]>=0.24' \
     'fastapi>=0.110' \
     'uvicorn>=0.30' \
-    'pyyaml>=6.0'
+    'pyyaml>=6.0' \
+    'packaging>=23.0'
 
 # 3. MLX version sanity (need 26.2+ for Neural Accelerators on M5)
 MLX_VERSION="$(python -c 'import mlx; print(mlx.__version__)')"
 say "MLX version: $MLX_VERSION"
-case "$MLX_VERSION" in
-    0.[0-9].*|0.1[0-9].*|0.2[0-5].*)
-        warn "MLX < 26.2 — Apple Neural Accelerators on M5 may not be used."
-        warn "Upgrade with: uv pip install --upgrade mlx-lm"
-        ;;
-esac
+if ! python - <<PY
+try:
+    from packaging.version import Version, InvalidVersion
+except ImportError:
+    raise SystemExit(0)  # packaging not installed; skip warn
+import sys
+try:
+    if Version("$MLX_VERSION") >= Version("26.2"):
+        sys.exit(0)
+    sys.exit(1)
+except InvalidVersion as e:
+    print(f"!! mlx version '{$MLX_VERSION}' not PEP 440 ({e}); skipping check", file=sys.stderr)
+    sys.exit(0)
+PY
+then
+    warn "MLX $MLX_VERSION < 26.2 — Apple Neural Accelerators on M5 may not be used."
+    warn "Upgrade with: uv pip install --upgrade mlx-lm"
+fi
 
 # 4. Base model
 mkdir -p "$MODELS_DIR"

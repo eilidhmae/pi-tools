@@ -2,8 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   launchd plist for the mlx-lm-multi proxy + backends.
-  Install:  cp proxy.service.plist ~/Library/LaunchAgents/dev.eilidhmae.pi-mlx.plist
-            launchctl load ~/Library/LaunchAgents/dev.eilidhmae.pi-mlx.plist
+  Install:
+    sed "s/_REPLACE_USER_/$USER/g" proxy.service.plist > ~/Library/LaunchAgents/dev.eilidhmae.pi-mlx.plist
+    launchctl load ~/Library/LaunchAgents/dev.eilidhmae.pi-mlx.plist
   Tail:     tail -f ~/.pi/agent/server-mlx.log
   Stop:     launchctl unload ~/Library/LaunchAgents/dev.eilidhmae.pi-mlx.plist
 

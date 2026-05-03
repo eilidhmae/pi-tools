@@ -23,6 +23,17 @@ Installs MLX 26.2+, downloads the base model, builds `llama.cpp` for
 GGUF conversion, and confirms the Apple Neural Accelerators are visible.
 Idempotent.
 
+### Autostart via launchd
+
+The shipped `mlx-lm-multi/proxy.service.plist` contains a `_REPLACE_USER_`
+placeholder for the operator's username. Render it and load it:
+
+```bash
+sed "s/_REPLACE_USER_/$USER/g" mlx-lm-multi/proxy.service.plist > \
+    ~/Library/LaunchAgents/dev.eilidhmae.pi-mlx.plist
+launchctl load ~/Library/LaunchAgents/dev.eilidhmae.pi-mlx.plist
+```
+
 ## Files
 
 ```

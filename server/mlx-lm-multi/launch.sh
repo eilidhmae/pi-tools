@@ -90,6 +90,7 @@ if [[ -f "$CONF" ]]; then
 fi
 
 # Hand the routing table to the proxy via env var
+export PI_BASE_MODEL_DIR="$BASE_MODEL_DIR"
 export PI_PROXY_ROUTES="$(IFS=, ; echo "${ROUTES[*]}")"
 export PI_PROXY_PORT="$PROXY_PORT"
 
