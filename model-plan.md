@@ -200,12 +200,14 @@ cannot tell which track is running, and `models.json` is identical.
 
 ### `extensions/adapter-route.ts` (new)
 
-Maps `(role, domain) → model_id`. The adapter-route table assigns the
-adversary role to `+adversary`; the harness only routes there when the
-operator explicitly opts in via `--adapter` / `--adversary-adapter`
-(see AGENTS.md → "Adapter-Scoped Authority"). Includes
-`inferDomain(signal)` — extension/content heuristic. Used by `quorum.ts`
-and importable by other extensions.
+Maps `(role, domain) → model_id`. For workers/managers, returns the
+domain-specific adapter id. **For adversary role, returns the bare base
+model by default**; pass `{ adversaryAdapter: true }` to opt in to
+`+adversary`. The harness never auto-routes adversaries to the adapter
+— operator opt-in via `--adapter` / `--adversary-adapter` is the only
+path (see AGENTS.md → "Adapter-Scoped Authority"). Includes
+`inferDomain(signal)` — extension/content heuristic. Importable by
+other extensions and by the bash tools that orchestrate dispatch.
 
 ### `extensions/adversary-parse.ts` (new)
 
