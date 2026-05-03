@@ -191,6 +191,15 @@ elif ! grep -q "local-mlx" "$MODELS_JSON" 2>/dev/null; then
   echo "      block from: $TEMPLATE"
 fi
 
+if [[ "$TARGET_MODE" == "local" ]]; then
+  echo ""
+  echo "NOTE: --local mode placed models.json at $MODELS_JSON. The pi"
+  echo "      binary's models.json discovery defaults to ~/.pi/agent/models.json."
+  echo "      Either symlink it (ln -s \"$MODELS_JSON\" ~/.pi/agent/models.json)"
+  echo "      or invoke pi with an explicit --models-json path if your build"
+  echo "      supports it."
+fi
+
 # --- Summary ---
 echo ""
 echo "=========================================="

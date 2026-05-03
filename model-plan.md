@@ -200,9 +200,12 @@ cannot tell which track is running, and `models.json` is identical.
 
 ### `extensions/adapter-route.ts` (new)
 
-Maps `(role, domain) → model_id`. Adversary always gets the adversary
-adapter regardless of language. Includes `inferDomain(signal)` — extension/
-content heuristic. Used by `quorum.ts` and importable by other extensions.
+Maps `(role, domain) → model_id`. The adapter-route table assigns the
+adversary role to `+adversary`; the harness only routes there when the
+operator explicitly opts in via `--adapter` / `--adversary-adapter`
+(see AGENTS.md → "Adapter-Scoped Authority"). Includes
+`inferDomain(signal)` — extension/content heuristic. Used by `quorum.ts`
+and importable by other extensions.
 
 ### `extensions/adversary-parse.ts` (new)
 

@@ -24,18 +24,19 @@ PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv-mola}"
 
 mkdir -p "$PIDS_DIR" "$LOG_DIR"
 
-# Create the isolated mola venv on first run. Sentinel file marks
-# successful completion of the install step — re-runs that find the
-# directory but no sentinel will retry the install rather than
-# silently activating a half-populated venv.
+# Provision the isolated mola venv on first run. Sentinel file marks
+# end-to-end install success (venv + base deps + MOLA editable install +
+# patch). Re-runs that find the directory but no sentinel rebuild from
+# scratch — partial venv directories or failed pip steps would otherwise
+# leave the next run silently activating a broken environment.
 SENTINEL="$PY_ENV/.install-complete"
 if [[ ! -f "$SENTINEL" ]]; then
     if [[ -d "$PY_ENV" ]]; then
-        echo "==> mola venv exists at $PY_ENV but install was incomplete; reinstalling"
-    else
-        echo "==> creating isolated mola venv at $PY_ENV"
-        uv venv "$PY_ENV" --python 3.12
+        echo "==> mola venv exists at $PY_ENV but install was incomplete; rebuilding"
+        rm -rf "$PY_ENV"
     fi
+    echo "==> creating isolated mola venv at $PY_ENV"
+    uv venv "$PY_ENV" --python 3.12
     # shellcheck disable=SC1091
     source "$PY_ENV/bin/activate"
     uv pip install --upgrade \
@@ -45,15 +46,14 @@ if [[ ! -f "$SENTINEL" ]]; then
         'uvicorn>=0.30' \
         'pyyaml>=6.0' \
         'packaging>=23.0'
-    : > "$SENTINEL"
-else
-    # shellcheck disable=SC1091
-    source "$PY_ENV/bin/activate"
-fi
 
-if [[ ! -d "$MOLA_DIR/.git" ]]; then
-    echo "==> cloning MOLA → $MOLA_DIR"
-    git clone --depth 1 "$MOLA_REPO" "$MOLA_DIR"
+    # MOLA repo + patch + editable install all happen inside this same
+    # provisioning block so a failure anywhere leaves the sentinel absent
+    # and the next run starts clean.
+    if [[ ! -d "$MOLA_DIR/.git" ]]; then
+        echo "==> cloning MOLA → $MOLA_DIR"
+        git clone --depth 1 "$MOLA_REPO" "$MOLA_DIR"
+    fi
     pushd "$MOLA_DIR" >/dev/null
     if [[ -f patches/mlx-lm.patch ]]; then
         echo "==> applying mlx-lm patch (inside isolated venv $PY_ENV)"
@@ -64,8 +64,13 @@ if [[ ! -d "$MOLA_DIR/.git" ]]; then
             exit 1
           }
     fi
-    pip install -e . >/dev/null
+    uv pip install -e . >/dev/null
     popd >/dev/null
+
+    : > "$SENTINEL"
+else
+    # shellcheck disable=SC1091
+    source "$PY_ENV/bin/activate"
 fi
 
 # Build adapter list from the shared conf

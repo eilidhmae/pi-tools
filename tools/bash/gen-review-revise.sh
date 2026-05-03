@@ -71,8 +71,12 @@ fi
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 BASENAME=$(basename "$SPEC" .md)
+# Skill discovery: prefer global install, fall back to project-local
+# (matches adversary-pass.sh).
 WORKER_SKILL="${HOME}/.pi/agent/skills/worker/SKILL.md"
 ADVERSARY_SKILL="${HOME}/.pi/agent/skills/adversary/SKILL.md"
+[[ -f "$WORKER_SKILL"   ]] || WORKER_SKILL=".pi/agent/skills/worker/SKILL.md"
+[[ -f "$ADVERSARY_SKILL" ]] || ADVERSARY_SKILL=".pi/agent/skills/adversary/SKILL.md"
 
 for path in "$WORKER_SKILL" "$ADVERSARY_SKILL"; do
   if [[ ! -f "$path" ]]; then
@@ -118,7 +122,7 @@ echo ""
 
 bash "$(dirname "$0")/adversary-pass.sh" \
   "drafts/${BASENAME}.go" \
-  --adapter
+  "${ADVERSARY_FLAGS[@]}"
 
 REVIEW_FILE=$(ls -t reviews/${BASENAME}-[0-9]*.md 2>/dev/null | head -1 || true)
 VERDICT="UNKNOWN"
