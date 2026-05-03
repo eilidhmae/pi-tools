@@ -2,8 +2,10 @@
  * adapter-route.ts
  *
  * Maps (role, domain) to a Qwen3-Coder model id with optional adapter
- * suffix. Used by quorum.ts and importable by other extensions or by
- * the orchestrator/manager skills (via a small bash wrapper).
+ * suffix. Importable by extensions and by the bash tools that orchestrate
+ * dispatch. Per AGENTS.md "Adapter-Scoped Authority", adversary adapter
+ * use is operator-opt-in; this function exposes the routing target but
+ * the caller must decide whether to take it.
  *
  * The orchestrator role MUST NOT be passed here — orchestrator runs on
  * the bare base model. Workers and adversaries route through this map.
@@ -12,6 +14,20 @@
 export type Role = "worker" | "adversary" | "manager";
 export type Domain =
   | "go" | "rust" | "python" | "terraform" | "general";
+
+export interface ModelForOptions {
+  /**
+   * For role === "adversary", whether to return the +adversary adapter id.
+   * Default false: the function returns the bare base model. Pass true at
+   * the call site (typically gated by an operator flag like --adapter or
+   * --adversary-adapter) to opt in.
+   *
+   * Per AGENTS.md "Adapter-Scoped Authority", the harness does not
+   * auto-detect or auto-switch — every adversary adapter use is an
+   * explicit operator decision.
+   */
+  adversaryAdapter?: boolean;
+}
 
 const BASE = "qwen3-coder-7b";
 
@@ -25,12 +41,19 @@ const ADAPTER_BY_DOMAIN: Record<Domain, string> = {
 
 /**
  * Resolve a model id from (role, domain).
- * Adversary always gets the adversary adapter regardless of language —
- * the adversary role is about producing structured verdicts; the language
- * detail comes from the artifact under review, not from the model.
+ *
+ * For workers/managers: returns the domain-specific adapter id.
+ * For adversaries: returns the base model id by default. Pass
+ * `{ adversaryAdapter: true }` to opt in to the +adversary adapter.
  */
-export function modelFor(role: Role, domain: Domain): string {
-  if (role === "adversary") return `${BASE}+adversary`;
+export function modelFor(
+  role: Role,
+  domain: Domain,
+  opts: ModelForOptions = {}
+): string {
+  if (role === "adversary") {
+    return opts.adversaryAdapter ? `${BASE}+adversary` : BASE;
+  }
   return ADAPTER_BY_DOMAIN[domain];
 }
 

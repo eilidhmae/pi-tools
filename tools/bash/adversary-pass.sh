@@ -62,15 +62,16 @@ TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 BASENAME=$(basename "$TARGET" | sed 's/\.[^.]*$//')
 REVIEW_DIR="reviews"
 REVIEW_FILE="${REVIEW_DIR}/${BASENAME}-${TIMESTAMP}.md"
-SKILL_PATH="${HOME}/.pi/agent/skills/adversary/SKILL.md"
-
-# Fall back to project-local skill
-if [[ ! -f "$SKILL_PATH" ]]; then
-  SKILL_PATH=".pi/agent/skills/adversary/SKILL.md"
-fi
+SKILL_GLOBAL="${HOME}/.pi/agent/skills/adversary/SKILL.md"
+SKILL_LOCAL=".pi/agent/skills/adversary/SKILL.md"
+SKILL_PATH="$SKILL_GLOBAL"
+[[ -f "$SKILL_PATH" ]] || SKILL_PATH="$SKILL_LOCAL"
 
 if [[ ! -f "$SKILL_PATH" ]]; then
-  echo "ERROR: adversary SKILL.md not found. Run install.sh first." >&2
+  echo "ERROR: adversary SKILL.md not found. Checked:" >&2
+  echo "  $SKILL_GLOBAL" >&2
+  echo "  $SKILL_LOCAL  (relative to CWD: $(pwd))" >&2
+  echo "Run install.sh first." >&2
   exit 1
 fi
 

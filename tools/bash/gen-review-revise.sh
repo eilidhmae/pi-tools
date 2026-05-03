@@ -72,18 +72,31 @@ fi
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 BASENAME=$(basename "$SPEC" .md)
 # Skill discovery: prefer global install, fall back to project-local
-# (matches adversary-pass.sh).
-WORKER_SKILL="${HOME}/.pi/agent/skills/worker/SKILL.md"
-ADVERSARY_SKILL="${HOME}/.pi/agent/skills/adversary/SKILL.md"
-[[ -f "$WORKER_SKILL"   ]] || WORKER_SKILL=".pi/agent/skills/worker/SKILL.md"
-[[ -f "$ADVERSARY_SKILL" ]] || ADVERSARY_SKILL=".pi/agent/skills/adversary/SKILL.md"
+# (matches adversary-pass.sh). Error message names both candidates so the
+# operator can see which install they actually need.
+declare -A SKILL_GLOBAL=(
+  [worker]="${HOME}/.pi/agent/skills/worker/SKILL.md"
+  [adversary]="${HOME}/.pi/agent/skills/adversary/SKILL.md"
+)
+declare -A SKILL_LOCAL=(
+  [worker]=".pi/agent/skills/worker/SKILL.md"
+  [adversary]=".pi/agent/skills/adversary/SKILL.md"
+)
 
-for path in "$WORKER_SKILL" "$ADVERSARY_SKILL"; do
-  if [[ ! -f "$path" ]]; then
-    echo "ERROR: skill not found: $path — run install.sh first." >&2
+resolve_skill() {
+  local kind="$1"
+  if   [[ -f "${SKILL_GLOBAL[$kind]}" ]]; then echo "${SKILL_GLOBAL[$kind]}"
+  elif [[ -f "${SKILL_LOCAL[$kind]}"  ]]; then echo "${SKILL_LOCAL[$kind]}"
+  else
+    echo "ERROR: $kind SKILL.md not found. Checked:" >&2
+    echo "  ${SKILL_GLOBAL[$kind]}" >&2
+    echo "  ${SKILL_LOCAL[$kind]}  (relative to CWD: $(pwd))" >&2
+    echo "Run install.sh first." >&2
     exit 1
   fi
-done
+}
+WORKER_SKILL="$(resolve_skill worker)"
+ADVERSARY_SKILL="$(resolve_skill adversary)"
 
 mkdir -p drafts reviews
 
