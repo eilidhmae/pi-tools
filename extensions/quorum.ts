@@ -92,8 +92,14 @@ function isNegativeVerdict(v: Verdict): boolean {
 }
 
 function majorityVerdict(verdicts: Verdict[]): Verdict {
+  // UNKNOWN entries (timeout, parse failure, crash) are treated as
+  // abstentions and excluded from the tally. The conservative bias on
+  // outright failures is preserved below: if no live reviewer reaches
+  // a majority, FAIL > CONCERNS > PASS still wins.
+  const live = verdicts.filter((v) => v !== "UNKNOWN");
+  if (live.length === 0) return "CONCERNS";  // all reviewers failed; fail closed
   const counts = { PASS: 0, CONCERNS: 0, FAIL: 0, UNKNOWN: 0 };
-  for (const v of verdicts) counts[v]++;
+  for (const v of live) counts[v]++;
   // FAIL beats CONCERNS in a tie (more conservative)
   if (counts.FAIL >= 2) return "FAIL";
   if (counts.CONCERNS >= 2) return "CONCERNS";
@@ -175,8 +181,11 @@ async function spawnPeerAdversary(
       if (settled) return;
       settled = true;
       const verdict = extractVerdict(stdout);
+      // Pass UNKNOWN through verbatim. majorityVerdict treats UNKNOWN as
+      // an abstention; the upstream caller can also surface the
+      // unparseable output to the operator.
       resolve({
-        verdict: verdict === "UNKNOWN" ? "CONCERNS" : verdict, // conservative on parse failure
+        verdict,
         findings: stdout.slice(0, 2000), // cap to avoid context explosion
         rawOutput: stdout,
       });

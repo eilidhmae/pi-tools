@@ -105,9 +105,12 @@ pi --provider local-mlx --model qwen3-coder-7b+go \
     "write a table-driven test for ParseConfig in pkg/config/parse.go"
 ```
 
-The orchestrator/manager skills know how to dispatch with the right
-adapter automatically — see "Adapter selection" in
-[`skills/orchestrator/SKILL.md`](skills/orchestrator/SKILL.md).
+The orchestrator/manager skills document how to dispatch with the right
+adapter when configured to do so — see "Adapter selection" in
+[`skills/orchestrator/SKILL.md`](skills/orchestrator/SKILL.md). Adversary
+adapter use is operator-opt-in (`--adapter` to `adversary-pass.sh`,
+`--adversary-adapter` to `gen-review-revise.sh`); the harness does not
+auto-detect or auto-switch.
 
 ### Switch to MOLA (opt-in track)
 

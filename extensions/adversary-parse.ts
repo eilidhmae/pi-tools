@@ -168,6 +168,13 @@ function readMap(lines: string[], baseIndent: number, cur: Cursor): YamlMap {
     if (after.trim() === "") {
       // Nested block (map or list) at deeper indent
       out[key] = readBlock(lines, baseIndent + 2, cur);
+    } else if (after.trim() === "[]") {
+      // Flow-style empty list. SKILL.md mandates `findings: []` for PASS
+      // verdicts; without this case the parser returns the string "[]"
+      // and validateReview throws "expected list" on every PASS block.
+      out[key] = [] as YamlList;
+    } else if (after.trim() === "{}") {
+      out[key] = {} as YamlMap;
     } else if (after.trim() === ">" || after.trim() === ">-" ||
                after.trim() === "|") {
       // Folded or literal block scalar

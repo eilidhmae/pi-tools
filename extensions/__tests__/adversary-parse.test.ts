@@ -145,27 +145,53 @@ if (r3.ok && r3.review) {
 }
 
 // ---------------------------------------------------------------------------
-// Test 4: Documented known limitation. An UNQUOTED list-item string
-// containing a colon is mis-parsed as a map. The adversary SKILL.md
-// schema mandates quoting; this test pins the misparse so a future edit
-// to readList does not silently change the behavior without intent.
-const knownBadYaml = `verdict: PASS
+// Test 4: SKILL.md mandates `findings: []` for PASS verdicts. The parser
+// must accept this flow-style empty list.
+const passYaml = `verdict: PASS
+confidence: high
+artifact:
+  path: src/clean.go
+  sha256: deadbeefcafef00d
+  lines_reviewed: 1-42
+findings: []
+`;
+const r4 = parseAdversaryReview("```adversary-review\n" + passYaml + "\n```");
+check("PASS verdict: ok=true", r4.ok, r4.fatal ?? "");
+check("PASS verdict: findings is empty list",
+      r4.review !== undefined && Array.isArray(r4.review.findings) && r4.review.findings.length === 0);
+
+// ---------------------------------------------------------------------------
+// Test 5: Documented known limitation. An UNQUOTED list-item string
+// containing a colon is mis-parsed as a map. SKILL.md mandates quoting;
+// this test pins the misparse so a future edit to readList doesn't
+// silently change the behavior without intent. The payload includes a
+// real findings list so the parse reaches mechanical_baseline.failures
+// where the unquoted colon actually triggers the bug.
+const knownBadYaml = `verdict: CONCERNS
 confidence: low
 artifact:
-  path: x
-  lines_reviewed: all
-findings: []
+  path: src/x.go
+  sha256: 0000000000000000
+  lines_reviewed: 1-10
+findings:
+  - id: F1
+    severity: minor
+    category: idiom
+    file: src/x.go
+    line: 1
+    line_end: 1
+    message: trivial
 mechanical_baseline:
   ran: true
   passed: false
   failures:
     - go vet: unreachable code at line 178
 `;
-const r4 = parseAdversaryReview("```adversary-review\n" + knownBadYaml + "\n```");
+const r5 = parseAdversaryReview("```adversary-review\n" + knownBadYaml + "\n```");
 check("known-limitation: unquoted colon string is mis-parsed → ok=false",
-      !r4.ok,
+      !r5.ok,
       "if this assertion ever STARTS passing, the parser was widened to handle " +
-      "unquoted colons; update SKILL.md and this test together.");
+      "unquoted colons; update SKILL.md and this test together. Currently r5.ok=" + r5.ok);
 
 // ---------------------------------------------------------------------------
 if (failures > 0) {

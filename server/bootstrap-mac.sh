@@ -54,18 +54,19 @@ uv pip install --upgrade \
 # 3. MLX version sanity (need 26.2+ for Neural Accelerators on M5)
 MLX_VERSION="$(python -c 'import mlx; print(mlx.__version__)')"
 say "MLX version: $MLX_VERSION"
-if ! python - <<PY
+if ! MLX_VER="$MLX_VERSION" python - <<'PY'
+import os, sys
+mlx_ver = os.environ["MLX_VER"]
 try:
     from packaging.version import Version, InvalidVersion
 except ImportError:
-    raise SystemExit(0)  # packaging not installed; skip warn
-import sys
+    sys.exit(0)  # packaging not installed; skip warn
 try:
-    if Version("$MLX_VERSION") >= Version("26.2"):
+    if Version(mlx_ver) >= Version("26.2"):
         sys.exit(0)
     sys.exit(1)
 except InvalidVersion as e:
-    print(f"!! mlx version '{$MLX_VERSION}' not PEP 440 ({e}); skipping check", file=sys.stderr)
+    print(f"!! mlx version '{mlx_ver}' not PEP 440 ({e}); skipping check", file=sys.stderr)
     sys.exit(0)
 PY
 then
