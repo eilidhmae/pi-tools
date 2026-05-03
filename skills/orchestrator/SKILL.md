@@ -103,6 +103,37 @@ Dispatch managers in parallel for independent goals (multiple pi RPC sessions
 or human-facing task assignments). Apply Parallelism Safety before every
 parallel dispatch.
 
+## Adapter Selection
+
+When dispatching a manager, also choose the **model id** the manager and
+its workers should use. The orchestrator itself always runs on the bare
+base model — never select an adapter for yourself.
+
+Domain inference (orchestrator-side rule of thumb; managers may override):
+
+| Task signal contains                          | Domain     | Model id                    |
+| --------------------------------------------- | ---------- | --------------------------- |
+| `.go` files, `goroutine`, `go.mod`, `go test` | go         | `qwen3-coder-7b+go`         |
+| `.rs` files, `Cargo.toml`, `cargo`, lifetime  | rust       | `qwen3-coder-7b+rust`       |
+| `.py` files, `pyproject.toml`, `uv`, `pytest` | python     | `qwen3-coder-7b+python`     |
+| `.tf` files, `terraform plan`, HCL            | terraform  | `qwen3-coder-7b+tf`         |
+| Adversary review (any language)               | adversary  | `qwen3-coder-7b+adversary`  |
+| None of the above                             | general    | `qwen3-coder-7b`            |
+
+Spawn pattern:
+
+```
+pi --provider local-mlx --model <model_id> /skill:manager
+```
+
+Programmatic helpers in `extensions/adapter-route.ts`:
+`modelFor(role, domain)` and `inferDomain(signal)`.
+
+If the operator's `models.json` does not configure `local-mlx` (Ollama-only
+deployment), fall back to provider `ollama` with the bare base id
+`qwen3-coder:30b` for all dispatches. Today's flow is unaffected when no
+adapters are installed.
+
 ## Parallelism Safety
 
 Before dispatching parallel managers:

@@ -30,17 +30,51 @@ import { spawn } from "child_process";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 
+import { captureFromQuorum, ReviewerOutput } from "./adversary-capture";
+
 // --- Configuration ---
-const MODEL = process.env.PI_QUORUM_MODEL ?? "qwen3-coder:30b";
-const PROVIDER = process.env.PI_QUORUM_PROVIDER ?? "ollama";
+//
+// Single-model legacy:        PI_QUORUM_MODEL=qwen3-coder:30b
+// Heterogeneous quorum (new): PI_QUORUM_MODELS="qwen3-coder:30b@ollama,qwen3-coder-7b+adversary@local-mlx"
+//                             temperatures parallel CSV (defaults shown):
+//                             PI_QUORUM_TEMPS="0.2,0.5,0.7"
+const LEGACY_MODEL = process.env.PI_QUORUM_MODEL ?? "qwen3-coder:30b";
+const LEGACY_PROVIDER = process.env.PI_QUORUM_PROVIDER ?? "ollama";
+const MODELS_RAW = process.env.PI_QUORUM_MODELS ?? "";
+const TEMPS_RAW = process.env.PI_QUORUM_TEMPS ?? "0.2,0.5,0.7";
 const PEER_TIMEOUT_MS = 120_000;
 const MAX_PEERS = 2;
+
+interface Peer {
+  model: string;
+  provider: string;
+  temperature: number;
+}
+
+function peerRoster(): Peer[] {
+  const temps = TEMPS_RAW.split(",").map((s) => parseFloat(s.trim())).filter((n) => !isNaN(n));
+  if (MODELS_RAW.trim() === "") {
+    return [{ model: LEGACY_MODEL, provider: LEGACY_PROVIDER, temperature: temps[0] ?? 0.2 }];
+  }
+  const out: Peer[] = [];
+  const entries = MODELS_RAW.split(",").map((s) => s.trim()).filter(Boolean);
+  for (let i = 0; i < entries.length; i++) {
+    const [model, provider] = entries[i].split("@");
+    out.push({
+      model,
+      provider: provider ?? "ollama",
+      temperature: temps[i] ?? temps[temps.length - 1] ?? 0.2,
+    });
+  }
+  return out;
+}
 
 type Verdict = "PASS" | "CONCERNS" | "FAIL" | "UNKNOWN";
 
 interface PeerResult {
   verdict: Verdict;
   findings: string;
+  rawOutput: string;
 }
 
 // --- Verdict parsing ---
@@ -87,24 +121,26 @@ function findAdversarySkill(): string | null {
 async function spawnPeerAdversary(
   scope: string,
   filePaths: string[],
-  peerNumber: number
+  peerNumber: number,
+  peer: Peer
 ): Promise<PeerResult> {
   const skillPath = findAdversarySkill();
   if (!skillPath) {
-    return { verdict: "UNKNOWN", findings: "adversary SKILL.md not found" };
+    return { verdict: "UNKNOWN", findings: "adversary SKILL.md not found", rawOutput: "" };
   }
 
   const skillContent = readFileSync(skillPath, "utf-8");
   const fileList = filePaths.map((p) => `@${p}`).join(" ");
 
-  // QUORUM_PEER token prevents the peer from triggering its own quorum
+  // QUORUM_PEER token prevents the peer from triggering its own quorum.
+  // Ask for the structured adversary-review fenced YAML block so capture
+  // can match findings, not just verdicts.
   const peerPrompt =
     `QUORUM_PEER peer-${peerNumber}: ` +
     `Review scope: ${scope}. ` +
     `Files: ${fileList || "(use git diff HEAD to identify changed files)"}. ` +
-    `Return ONLY: VERDICT: [PASS|CONCERNS|FAIL] followed by your top 1-3 specific findings ` +
-    `with file:line references. Do not execute the full review protocol — verdict and ` +
-    `top findings only.`;
+    `Emit the structured adversary-review fenced YAML block per skills/adversary/SKILL.md, ` +
+    `with verdict, confidence, artifact, and findings. Skip the prose summary — block only.`;
 
   return new Promise((resolve) => {
     let stdout = "";
@@ -113,8 +149,9 @@ async function spawnPeerAdversary(
     const child = spawn(
       "pi",
       [
-        "--provider", PROVIDER,
-        "--model", MODEL,
+        "--provider", peer.provider,
+        "--model", peer.model,
+        "--temperature", String(peer.temperature),
         "--tools", "read,grep,ls,bash",
         "--no-write",
         "--no-edit",
@@ -142,6 +179,7 @@ async function spawnPeerAdversary(
       resolve({
         verdict: verdict === "UNKNOWN" ? "CONCERNS" : verdict, // conservative on parse failure
         findings: stdout.slice(0, 2000), // cap to avoid context explosion
+        rawOutput: stdout,
       });
     };
 
@@ -206,22 +244,55 @@ export default function (pi: any) {
       }
     }
 
-    // --- Spawn peer 1 ---
-    const peer1 = await spawnPeerAdversary(scope, filePaths, 1);
+    // --- Spawn peers from configured roster ---
+    const roster = peerRoster();
+    const peerOutputs: { peer: Peer; result: PeerResult }[] = [];
+
+    const peer1 = await spawnPeerAdversary(scope, filePaths, 1, roster[0]);
+    peerOutputs.push({ peer: roster[0], result: peer1 });
+
     let quorumSummary: string;
     let finalVerdict: Verdict;
 
     if (isNegativeVerdict(peer1.verdict)) {
-      // Quorum confirmed on first peer
       finalVerdict = majorityVerdict([selfVerdict, peer1.verdict]);
       quorumSummary = `self=${selfVerdict}, peer1=${peer1.verdict} → **${finalVerdict} confirmed**`;
     } else {
-      // Peer 1 disagrees — spawn peer 2
-      const peer2 = await spawnPeerAdversary(scope, filePaths, 2);
+      const secondPeerCfg = roster[1] ?? roster[0];
+      const peer2 = await spawnPeerAdversary(scope, filePaths, 2, secondPeerCfg);
+      peerOutputs.push({ peer: secondPeerCfg, result: peer2 });
       finalVerdict = majorityVerdict([selfVerdict, peer1.verdict, peer2.verdict]);
       quorumSummary =
         `self=${selfVerdict}, peer1=${peer1.verdict}, peer2=${peer2.verdict} → ` +
         `**${finalVerdict}** (majority of 3)`;
+    }
+
+    // --- Capture training example on agreement (best-effort) ---
+    try {
+      const reviewers: ReviewerOutput[] = [
+        {
+          modelId: process.env.PI_MODEL ?? "unknown-self",
+          temperature: parseFloat(process.env.PI_TEMPERATURE ?? "0"),
+          rawOutput: lastText,
+        },
+        ...peerOutputs.map(({ peer, result }) => ({
+          modelId: peer.model,
+          temperature: peer.temperature,
+          rawOutput: result.rawOutput,
+        })),
+      ];
+      const captured = captureFromQuorum(reviewers, {
+        scope,
+        artifactPath: filePaths[0],
+        gitSha: process.env.GIT_SHA,
+        projectName: ctx.cwd ? ctx.cwd.split("/").pop() : undefined,
+      });
+      if (captured.tier !== null) {
+        quorumSummary += `  [captured tier-${captured.tier} → ${captured.recordedTo}]`;
+      }
+    } catch (e) {
+      // Capture is best-effort; never fail the quorum because of it.
+      quorumSummary += `  [capture skipped: ${(e as Error).message}]`;
     }
 
     // --- Inject quorum summary ---

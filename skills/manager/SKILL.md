@@ -138,6 +138,20 @@ Every worker prompt must be self-contained. Include:
 
 Exclude: project history, other workers' tasks, coordination concerns.
 
+### Adapter passthrough
+
+If the orchestrator dispatched you with a `--model` flag (e.g.
+`qwen3-coder-7b+go`), pass that **same model id** to every worker you
+spawn. Workers inherit your domain. If you decide a single sub-task is
+better served by a different specialist (e.g. a Rust port arises inside
+a Go-domain task), pick the appropriate id from the table in
+`/skill:orchestrator` → "Adapter Selection" and document the override
+in your worker dispatch.
+
+For adversary reviews you spawn, always pass `qwen3-coder-7b+adversary`
+(via `--model` to `adversary-pass.sh`, or `pi --model …`). The adversary
+adapter is role-specialized and language-agnostic.
+
 ## Adversary Verification Protocol
 
 After every completed worker task, before accepting it, run an adversary review.

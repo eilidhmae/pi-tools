@@ -158,6 +158,13 @@ that don't match reality. List each failure with file:line reference.
 
 ## Output Format
 
+Two parts. The prose summary is for humans. The fenced YAML block is
+machine-parsed and feeds the adversary-general training pipeline (see
+`extensions/adversary-parse.ts` and `extensions/adversary-capture.ts`).
+Both must be present.
+
+### Prose summary (for humans)
+
 ```
 ## Adversary Review
 
@@ -187,13 +194,101 @@ that don't match reality. List each failure with file:line reference.
 
 ### Quorum
 [omit if verdict is PASS; populated by quorum.ts with peer verdicts]
-
----
-
-**VERDICT: [PASS|CONCERNS|FAIL]**
-
-[if CONCERNS or FAIL: numbered list of specific issues with file:line references]
 ```
+
+### Structured block (for the parser)
+
+After the prose, emit a fenced block labelled exactly `adversary-review`
+containing your verdict and findings as YAML. The schema below is **v1
+and frozen** — the adversary-general training dataset depends on it.
+Parser source of truth: `extensions/adversary-parse.ts`.
+
+#### Required fields
+
+- `verdict`: one of `PASS`, `CONCERNS`, `FAIL`
+- `confidence`: one of `high`, `medium`, `low`
+- `artifact.path`: the file (or scope) reviewed
+- `artifact.sha256`: SHA-256 hex of the file content (first 16 chars OK; for
+  multi-file scope, hash the concatenated content; omit if not feasible)
+- `artifact.lines_reviewed`: range like `1-247`, or `all`
+- `findings`: list (empty if PASS)
+
+#### Each finding
+
+- `id`: `F1`, `F2`, `F3`, … (sequential within this review)
+- `severity`: one of `critical`, `major`, `minor`
+- `category`: one of the eight allowed categories below — exactly
+- `file`, `line`, `line_end`: location (use `line == line_end` for one-line)
+- `message`: what's wrong, plain English (use folded `>` for multi-line)
+- `suggested_fix`: how to fix it (omit if you don't have one)
+
+#### Allowed categories (closed vocabulary)
+
+- `race-condition` — data races, concurrent mutation, missing sync
+- `error-handling` — ignored errors, panics, wrong error types
+- `resource-leak` — unclosed handles, goroutine leaks, context leaks
+- `security` — injection, auth bypass, unsafe deserialization
+- `correctness` — logic bug, off-by-one, wrong return value
+- `idiom` — non-idiomatic for the language, style violations
+- `performance` — avoidable allocations, N+1, wrong data structure
+- `maintainability` — unclear naming, missing docs, complex flow
+
+Do not invent new categories. Pick the closest one. The parser normalizes
+common aliases (`concurrency` → `race-condition`, `bug` → `correctness`,
+etc.) but emits a warning each time it has to.
+
+#### Worked example
+
+```adversary-review
+verdict: FAIL
+confidence: high
+artifact:
+  path: src/auth/session.go
+  sha256: a3f8c2e1bf09d145
+  lines_reviewed: 1-247
+findings:
+  - id: F1
+    severity: critical
+    category: race-condition
+    file: src/auth/session.go
+    line: 47
+    line_end: 52
+    message: >
+      Concurrent access to the session map without mutex protection.
+      Multiple goroutines can call Store() simultaneously, leading to a
+      fatal map race detected at runtime.
+    suggested_fix: >
+      Wrap reads/writes in sync.RWMutex, or replace with sync.Map.
+  - id: F2
+    severity: major
+    category: error-handling
+    file: src/auth/session.go
+    line: 92
+    line_end: 92
+    message: >
+      Error from json.Unmarshal is discarded. Malformed session data will
+      silently produce a zero-value Session struct.
+    suggested_fix: >
+      Return wrapped error: fmt.Errorf("decode session: %w", err)
+mechanical_baseline:
+  ran: true
+  passed: false
+  failures:
+    - "go vet: unreachable code at line 178"
+```
+
+#### Common mistakes to avoid
+
+- Do **not** use a `yaml` fence label — use exactly `adversary-review`.
+- Do **not** invent new categories. Pick from the eight above.
+- Do **not** use `severity: warning` or `severity: info` — only
+  `critical`, `major`, `minor`.
+- If a finding spans multiple files, emit it as separate findings — one
+  per file, sharing the same category and message.
+- Findings list MUST be `[]` (or omitted) when verdict is PASS.
+
+The verdict in the YAML block is authoritative; the prose summary's
+`**VERDICT: …**` line should match it.
 
 ## Important
 

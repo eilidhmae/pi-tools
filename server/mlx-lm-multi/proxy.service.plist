@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd plist for the mlx-lm-multi proxy + backends.
+  Install:  cp proxy.service.plist ~/Library/LaunchAgents/dev.eilidhmae.pi-mlx.plist
+            launchctl load ~/Library/LaunchAgents/dev.eilidhmae.pi-mlx.plist
+  Tail:     tail -f ~/.pi/agent/server-mlx.log
+  Stop:     launchctl unload ~/Library/LaunchAgents/dev.eilidhmae.pi-mlx.plist
+
+  Edit WorkingDirectory below to point at your pi-tools/server/mlx-lm-multi
+  checkout if it is not at $HOME/src/pi-tools/server/mlx-lm-multi.
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>dev.eilidhmae.pi-mlx</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/_REPLACE_USER_/src/pi-tools/server/mlx-lm-multi</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>./launch.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+      <key>SuccessfulExit</key>
+      <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/_REPLACE_USER_/.pi/agent/server-mlx.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/_REPLACE_USER_/.pi/agent/server-mlx.err.log</string>
+  </dict>
+</plist>

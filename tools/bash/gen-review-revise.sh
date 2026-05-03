@@ -4,9 +4,15 @@
 #                         optionally revise.
 #
 # Usage:
-#   gen-review-revise.sh <spec.md>              # generate + review
-#   gen-review-revise.sh <spec.md> --revise     # generate + review + revise if needed
-#   gen-review-revise.sh <spec.md> --model <m>  # override model
+#   gen-review-revise.sh <spec.md>                       # generate + review
+#   gen-review-revise.sh <spec.md> --revise              # generate + review + revise if needed
+#   gen-review-revise.sh <spec.md> --model <m>           # override worker model
+#   gen-review-revise.sh <spec.md> --provider <p>        # override worker provider
+#   gen-review-revise.sh <spec.md> --domain <go|rust|python|terraform|general>
+#                                                        # convenience: pick a worker adapter on local-mlx
+#
+# The adversary stage always uses qwen3-coder-7b+adversary on local-mlx
+# when an adversary adapter is installed; otherwise inherits worker provider/model.
 #
 # Stages:
 #   1. Worker: implement from spec (TDD: write tests first)
@@ -29,9 +35,21 @@ PROVIDER="ollama"
 shift
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --revise)  REVISE=1 ;;
-    --model)   MODEL="$2"; shift ;;
-    *)         echo "Unknown option: $1" >&2; exit 1 ;;
+    --revise)   REVISE=1 ;;
+    --model)    MODEL="$2"; shift ;;
+    --provider) PROVIDER="$2"; shift ;;
+    --domain)
+      PROVIDER="local-mlx"
+      case "$2" in
+        go)         MODEL="qwen3-coder-7b+go" ;;
+        rust)       MODEL="qwen3-coder-7b+rust" ;;
+        python)     MODEL="qwen3-coder-7b+python" ;;
+        terraform)  MODEL="qwen3-coder-7b+tf" ;;
+        general)    MODEL="qwen3-coder-7b" ;;
+        *)          echo "Unknown --domain: $2" >&2; exit 1 ;;
+      esac
+      shift ;;
+    *)          echo "Unknown option: $1" >&2; exit 1 ;;
   esac
   shift
 done
