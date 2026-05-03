@@ -52,7 +52,11 @@ if [[ ! -f "$SENTINEL" ]]; then
     # and the next run starts clean.
     if [[ ! -d "$MOLA_DIR/.git" ]]; then
         echo "==> cloning MOLA → $MOLA_DIR"
-        git clone --depth 1 "$MOLA_REPO" "$MOLA_DIR"
+        # Clean up a partial clone on failure: git creates .git/ early in the
+        # transfer, and a network interruption would otherwise leave the guard
+        # above evaluating false on every subsequent run.
+        git clone --depth 1 "$MOLA_REPO" "$MOLA_DIR" \
+            || { rm -rf "$MOLA_DIR"; echo "!! mola clone failed; removed partial $MOLA_DIR" >&2; exit 1; }
     fi
     pushd "$MOLA_DIR" >/dev/null
     if [[ -f patches/mlx-lm.patch ]]; then

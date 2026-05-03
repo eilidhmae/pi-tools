@@ -193,9 +193,14 @@ fi
 
 if [[ "$TARGET_MODE" == "local" ]]; then
   echo ""
-  echo "NOTE: --local mode placed models.json at $MODELS_JSON. The pi"
-  echo "      binary's models.json discovery defaults to ~/.pi/agent/models.json."
-  echo "      Either symlink it (ln -s \"$MODELS_JSON\" ~/.pi/agent/models.json)"
+  echo "NOTE: --local mode placed models.json at:"
+  echo "  $MODELS_JSON"
+  echo ""
+  echo "      The pi binary's models.json discovery defaults to"
+  echo "      ~/.pi/agent/models.json. Either symlink (copy-paste this line):"
+  echo ""
+  echo "  ln -s \"$MODELS_JSON\" \"$HOME/.pi/agent/models.json\""
+  echo ""
   echo "      or invoke pi with an explicit --models-json path if your build"
   echo "      supports it."
 fi
