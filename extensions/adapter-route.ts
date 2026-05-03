@@ -42,7 +42,7 @@ export function modelFor(role: Role, domain: Domain): string {
 export function inferDomain(signal: string): Domain {
   const s = signal.toLowerCase();
   if (/\.go\b|goroutine|go\.mod|go test/.test(s))    return "go";
-  if (/\.rs\b|cargo\.toml|cargo\s|lifetime/.test(s)) return "rust";
+  if (/\.rs\b|cargo\.toml|\bcargo\b|lifetime/.test(s)) return "rust";
   if (/\.py\b|pyproject|uv\s|pytest/.test(s))        return "python";
   if (/\.tf\b|terraform|hcl\b/.test(s))              return "terraform";
   return "general";

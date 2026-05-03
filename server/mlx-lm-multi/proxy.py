@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -40,9 +41,23 @@ def parse_routes(raw: str) -> dict[str, int]:
 
 ROUTES = parse_routes(os.environ.get("PI_PROXY_ROUTES", ""))
 PORT = int(os.environ.get("PI_PROXY_PORT", "8080"))
+BASE_MODEL_DIR = os.environ.get("PI_BASE_MODEL_DIR")
+if not BASE_MODEL_DIR:
+    raise SystemExit(
+        "PI_BASE_MODEL_DIR must be set (path the backend mlx_lm.server was launched with). "
+        "Use mlx-lm-multi/launch.sh which exports it, or set it manually."
+    )
 
-app = FastAPI()
 client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=5.0))
+
+
+@asynccontextmanager
+async def lifespan(app):
+    yield
+    await client.aclose()
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 def backend_for(model_id: str) -> tuple[int, str]:
@@ -88,9 +103,11 @@ async def _forward(request: Request, path: str) -> Any:
         raise HTTPException(400, "invalid JSON body")
     model = payload.get("model", BASE_MODEL_ID)
     port, _ = backend_for(model)
-    # Rewrite the model field to bare base id; mlx_lm.server backend doesn't
-    # know about our +suffix convention — the adapter is loaded at boot.
-    payload["model"] = BASE_MODEL_ID
+    # Rewrite the model field to the path the backend mlx_lm.server was
+    # launched with; mlx_lm.server (>=0.20) expects the request "model" field
+    # to match its --model arg, and it doesn't know about our +suffix
+    # convention — the adapter is loaded at boot.
+    payload["model"] = BASE_MODEL_DIR
     url = f"http://127.0.0.1:{port}{path}"
 
     headers = {k: v for k, v in request.headers.items()

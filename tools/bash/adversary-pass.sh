@@ -191,8 +191,6 @@ if [[ "$REVISE" -eq 1 ]] && [[ "$VERDICT" == "CONCERNS" || "$VERDICT" == "FAIL" 
   echo "--- Revision pass (verdict was ${VERDICT}) ---"
   echo ""
 
-  REVISION_FILE="${REVIEW_DIR}/${BASENAME}-revised-${TIMESTAMP}.go"
-
   pi \
     --provider "$PROVIDER" \
     --model "$MODEL" \

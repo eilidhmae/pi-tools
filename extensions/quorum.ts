@@ -43,7 +43,6 @@ const LEGACY_PROVIDER = process.env.PI_QUORUM_PROVIDER ?? "ollama";
 const MODELS_RAW = process.env.PI_QUORUM_MODELS ?? "";
 const TEMPS_RAW = process.env.PI_QUORUM_TEMPS ?? "0.2,0.5,0.7";
 const PEER_TIMEOUT_MS = 120_000;
-const MAX_PEERS = 2;
 
 interface Peer {
   model: string;

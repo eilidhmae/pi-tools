@@ -11,8 +11,12 @@
 #   gen-review-revise.sh <spec.md> --domain <go|rust|python|terraform|general>
 #                                                        # convenience: pick a worker adapter on local-mlx
 #
-# The adversary stage always uses qwen3-coder-7b+adversary on local-mlx
-# when an adversary adapter is installed; otherwise inherits worker provider/model.
+# Adversary stage selection (operator-opt-in):
+#   default            adversary inherits the worker's --provider/--model
+#                      (works on Ollama-only deployments)
+#   --adversary-adapter call adversary-pass.sh --adapter, which uses
+#                      qwen3-coder-7b+adversary on local-mlx. Requires
+#                      the +adversary adapter to be installed.
 #
 # Stages:
 #   1. Worker: implement from spec (TDD: write tests first)
@@ -31,13 +35,15 @@ SPEC="${1:?Usage: gen-review-revise.sh <spec.md> [--revise] [--model <model>]}"
 REVISE=0
 MODEL="qwen3-coder:30b"
 PROVIDER="ollama"
+ADVERSARY_ADAPTER=0
 
 shift
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --revise)   REVISE=1 ;;
-    --model)    MODEL="$2"; shift ;;
-    --provider) PROVIDER="$2"; shift ;;
+    --revise)              REVISE=1 ;;
+    --model)               MODEL="$2"; shift ;;
+    --provider)            PROVIDER="$2"; shift ;;
+    --adversary-adapter)   ADVERSARY_ADAPTER=1 ;;
     --domain)
       PROVIDER="local-mlx"
       case "$2" in
@@ -53,6 +59,15 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+# Build the adversary invocation flags once. Default: inherit the
+# worker's provider/model (Ollama-friendly). Opt-in: --adapter, which
+# adversary-pass.sh maps to local-mlx + qwen3-coder-7b+adversary.
+if [[ "$ADVERSARY_ADAPTER" -eq 1 ]]; then
+  ADVERSARY_FLAGS=( --adapter )
+else
+  ADVERSARY_FLAGS=( --provider "$PROVIDER" --model "$MODEL" )
+fi
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 BASENAME=$(basename "$SPEC" .md)
@@ -103,7 +118,7 @@ echo ""
 
 bash "$(dirname "$0")/adversary-pass.sh" \
   "drafts/${BASENAME}.go" \
-  --model "$MODEL"
+  --adapter
 
 REVIEW_FILE=$(ls -t reviews/${BASENAME}-[0-9]*.md 2>/dev/null | head -1 || true)
 VERDICT="UNKNOWN"
@@ -137,7 +152,7 @@ Run the full test suite and confirm green before completing." 2>&1
 
   bash "$(dirname "$0")/adversary-pass.sh" \
     "drafts/${BASENAME}.go" \
-    --model "$MODEL"
+    "${ADVERSARY_FLAGS[@]}"
 
   FINAL_REVIEW=$(ls -t reviews/${BASENAME}-[0-9]*.md 2>/dev/null | head -1 || true)
   FINAL_VERDICT="UNKNOWN"

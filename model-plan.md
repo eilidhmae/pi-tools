@@ -142,7 +142,8 @@ training in v1.
 
 ## Adapter distribution (portability)
 
-Each adapter release ships **three formats**, all built on M5 Max via
+Each adapter release ships in **four formats** (five files, since the PEFT
+format is a safetensors + sidecar pair), all built on M5 Max via
 `scripts/merge.sh && scripts/convert-gguf.sh`, uploaded as GitHub Release
 assets:
 
@@ -156,7 +157,7 @@ assets:
 The PEFT-compatible export is essentially the same safetensors with an
 `adapter_config.json` PEFT recognizes — a one-step `mlx_lm`-side rename.
 GGUF conversion uses `llama.cpp/convert_hf_to_gguf.py` against the merged
-model. All three are deterministic from the same training run.
+model. All formats are deterministic from the same training run.
 
 `SHA256SUMS` per release for verification.
 

@@ -45,6 +45,8 @@ pi-tools/
 │   ├── adversary-pass.sh             # headless adversary pipeline
 │   └── gen-review-revise.sh          # generate → review → revise cycle
 └── server/                           # local MLX/MOLA inference launch tooling
+    ├── README.md                     # server overview + first-time setup
+    ├── HEALTH.md                     # operator runbook, fallback criteria
     ├── bootstrap-mac.sh              # one-shot M5 Max setup
     ├── models.json.template
     ├── mlx-lm-multi/                 # default track (one process per adapter)

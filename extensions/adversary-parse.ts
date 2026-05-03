@@ -204,8 +204,15 @@ function readList(lines: string[], baseIndent: number, cur: Cursor): YamlList {
 
     if (after.trim() === "") {
       out.push(readBlock(lines, baseIndent + 2, cur));
-    } else if (after.includes(":")) {
+    } else if (after.includes(":") &&
+               !after.trimStart().startsWith('"') &&
+               !after.trimStart().startsWith("'")) {
       // Inline first kv of an item map: "- key: value"
+      // KNOWN LIMITATION: an unquoted list-item string that contains a
+      // colon (e.g. `- go vet: error at line 5`) falls into this branch
+      // and is mis-parsed as a map. The SKILL.md schema mandates quoting
+      // (`- "go vet: error at line 5"`); this guard recovers that case.
+      // The unquoted form is documented as bad output by the adversary skill.
       const itemMap: YamlMap = {};
       const colon = after.indexOf(":");
       const k = after.slice(0, colon).trim();

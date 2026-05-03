@@ -148,11 +148,13 @@ install_file \
 chmod +x "${TOOLS_DIR}/gen-review-revise.sh"
 
 # --- Verify pi models.json has ollama and (optionally) local-mlx configured ---
-MODELS_JSON="${HOME}/.pi/agent/models.json"
+# Derived from PI_AGENT_DIR so --local installs land in the repo and global
+# installs land under $HOME.
+MODELS_JSON="${PI_AGENT_DIR}/models.json"
 TEMPLATE="$SCRIPT_DIR/server/models.json.template"
 if [[ ! -f "$MODELS_JSON" ]]; then
   echo ""
-  echo "=== models.json not found — installing template (ollama + local-mlx) ==="
+  echo "=== models.json not found at ${MODELS_JSON} — installing template (ollama + local-mlx) ==="
   mkdir -p "$(dirname "$MODELS_JSON")"
   if [[ -f "$TEMPLATE" ]]; then
     cp "$TEMPLATE" "$MODELS_JSON"
