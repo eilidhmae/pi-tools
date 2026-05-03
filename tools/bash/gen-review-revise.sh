@@ -84,6 +84,11 @@ declare -A SKILL_LOCAL=(
 )
 
 resolve_skill() {
+  # Called via $(resolve_skill kind) so failure exits the subshell with 1;
+  # set -e on the outer script then aborts. stderr from the diagnostic
+  # below is propagated to the operator's terminal in normal usage; if a
+  # caller redirects this script's stderr (e.g. 2>/dev/null), the
+  # diagnostic is silently dropped — but the script still exits non-zero.
   local kind="$1"
   if   [[ -f "${SKILL_GLOBAL[$kind]}" ]]; then echo "${SKILL_GLOBAL[$kind]}"
   elif [[ -f "${SKILL_LOCAL[$kind]}"  ]]; then echo "${SKILL_LOCAL[$kind]}"
@@ -137,11 +142,26 @@ bash "$(dirname "$0")/adversary-pass.sh" \
   "drafts/${BASENAME}.go" \
   "${ADVERSARY_FLAGS[@]}"
 
+# Verdict extraction: prefer YAML `verdict:` (authoritative per
+# skills/adversary/SKILL.md), fall back to prose `**VERDICT:**`.
+# `||` chaining is unreliable here because `head -1` always exits 0;
+# explicit empty-checks below.
+extract_verdict() {
+  local file="$1" v
+  v=$(grep -E '^verdict:[[:space:]]*(PASS|CONCERNS|FAIL)\b' "$file" 2>/dev/null \
+        | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1)
+  if [[ -z "$v" ]]; then
+    v=$(grep -E '\*\*VERDICT:' "$file" 2>/dev/null \
+          | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1)
+  fi
+  [[ -z "$v" ]] && v="UNKNOWN"
+  echo "$v"
+}
+
 REVIEW_FILE=$(ls -t reviews/${BASENAME}-[0-9]*.md 2>/dev/null | head -1 || true)
 VERDICT="UNKNOWN"
 if [[ -n "$REVIEW_FILE" ]]; then
-  VERDICT=$(grep -E '\*\*VERDICT:' "$REVIEW_FILE" | head -1 | \
-    grep -oE 'PASS|CONCERNS|FAIL' | head -1 || echo "UNKNOWN")
+  VERDICT="$(extract_verdict "$REVIEW_FILE")"
 fi
 
 echo ""
@@ -174,8 +194,7 @@ Run the full test suite and confirm green before completing." 2>&1
   FINAL_REVIEW=$(ls -t reviews/${BASENAME}-[0-9]*.md 2>/dev/null | head -1 || true)
   FINAL_VERDICT="UNKNOWN"
   if [[ -n "$FINAL_REVIEW" ]]; then
-    FINAL_VERDICT=$(grep -E '\*\*VERDICT:' "$FINAL_REVIEW" | head -1 | \
-      grep -oE 'PASS|CONCERNS|FAIL' | head -1 || echo "UNKNOWN")
+    FINAL_VERDICT="$(extract_verdict "$FINAL_REVIEW")"
   fi
 
   echo ""

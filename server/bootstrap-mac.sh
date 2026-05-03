@@ -51,27 +51,35 @@ uv pip install --upgrade \
     'pyyaml>=6.0' \
     'packaging>=23.0'
 
-# 3. MLX version sanity (need 26.2+ for Neural Accelerators on M5)
+# 3. macOS + MLX sanity check.
+#
+# Apple Neural Accelerator support for M5 lands in macOS Tahoe 26.2 paired
+# with a recent mlx-lm. The mlx PACKAGE itself is on 0.x — its version
+# string does not encode neural-accelerator support — so we check the macOS
+# version (which does) and the mlx import (which must succeed) separately.
 MLX_VERSION="$(python -c 'import mlx; print(mlx.__version__)')"
-say "MLX version: $MLX_VERSION"
-if ! MLX_VER="$MLX_VERSION" python - <<'PY'
+say "MLX library version: $MLX_VERSION  (informational; mlx is on 0.x)"
+
+MACOS_VERSION="$(sw_vers -productVersion 2>/dev/null || echo 0.0)"
+say "macOS version: $MACOS_VERSION"
+if ! MAC_VER="$MACOS_VERSION" python - <<'PY'
 import os, sys
-mlx_ver = os.environ["MLX_VER"]
+mac_ver = os.environ["MAC_VER"]
 try:
     from packaging.version import Version, InvalidVersion
 except ImportError:
     sys.exit(0)  # packaging not installed; skip warn
 try:
-    if Version(mlx_ver) >= Version("26.2"):
+    if Version(mac_ver) >= Version("26.2"):
         sys.exit(0)
     sys.exit(1)
 except InvalidVersion as e:
-    print(f"!! mlx version '{mlx_ver}' not PEP 440 ({e}); skipping check", file=sys.stderr)
+    print(f"!! macOS version '{mac_ver}' not PEP 440 ({e}); skipping check", file=sys.stderr)
     sys.exit(0)
 PY
 then
-    warn "MLX $MLX_VERSION < 26.2 — Apple Neural Accelerators on M5 may not be used."
-    warn "Upgrade with: uv pip install --upgrade mlx-lm"
+    warn "macOS $MACOS_VERSION < 26.2 — Apple Neural Accelerators on M5"
+    warn "may fall back to GPU shader cores. Update macOS for full performance."
 fi
 
 # 4. Base model

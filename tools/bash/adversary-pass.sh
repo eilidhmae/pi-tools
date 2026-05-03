@@ -112,8 +112,18 @@ echo ""
 } > "$REVIEW_FILE"
 
 # --- Extract verdict ---
-VERDICT=$(echo "$REVIEW" | grep -E '\*\*VERDICT:' | head -1 | \
-  grep -oE 'PASS|CONCERNS|FAIL' | head -1 || echo "UNKNOWN")
+# Prefer the YAML block's `verdict:` field (authoritative per
+# skills/adversary/SKILL.md). Fall back to the prose `**VERDICT: …**`
+# line when the YAML block is absent (e.g. self-review prompt format).
+# `||` chaining doesn't work here because `head -1` always returns exit 0;
+# explicit empty-checks below.
+VERDICT=$(echo "$REVIEW" | grep -E '^verdict:[[:space:]]*(PASS|CONCERNS|FAIL)\b' \
+            | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1)
+if [[ -z "$VERDICT" ]]; then
+  VERDICT=$(echo "$REVIEW" | grep -E '\*\*VERDICT:' \
+              | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1)
+fi
+[[ -z "$VERDICT" ]] && VERDICT="UNKNOWN"
 
 echo "Verdict: $VERDICT"
 echo "Review written to: $REVIEW_FILE"
