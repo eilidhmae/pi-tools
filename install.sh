@@ -118,6 +118,18 @@ install_file \
   "$SCRIPT_DIR/extensions/quorum.ts" \
   "$PI_AGENT_DIR/extensions/quorum.ts"
 
+install_file \
+  "$SCRIPT_DIR/extensions/adapter-route.ts" \
+  "$PI_AGENT_DIR/extensions/adapter-route.ts"
+
+install_file \
+  "$SCRIPT_DIR/extensions/adversary-parse.ts" \
+  "$PI_AGENT_DIR/extensions/adversary-parse.ts"
+
+install_file \
+  "$SCRIPT_DIR/extensions/adversary-capture.ts" \
+  "$PI_AGENT_DIR/extensions/adversary-capture.ts"
+
 echo ""
 echo "=== Tools ==="
 install_file \
@@ -135,13 +147,17 @@ install_file \
   "${TOOLS_DIR}/gen-review-revise.sh"
 chmod +x "${TOOLS_DIR}/gen-review-revise.sh"
 
-# --- Verify pi models.json has ollama configured ---
+# --- Verify pi models.json has ollama and (optionally) local-mlx configured ---
 MODELS_JSON="${HOME}/.pi/agent/models.json"
+TEMPLATE="$SCRIPT_DIR/server/models.json.template"
 if [[ ! -f "$MODELS_JSON" ]]; then
   echo ""
-  echo "=== models.json not found — creating with ollama defaults ==="
+  echo "=== models.json not found — installing template (ollama + local-mlx) ==="
   mkdir -p "$(dirname "$MODELS_JSON")"
-  cat > "$MODELS_JSON" <<'EOF'
+  if [[ -f "$TEMPLATE" ]]; then
+    cp "$TEMPLATE" "$MODELS_JSON"
+  else
+    cat > "$MODELS_JSON" <<'EOF'
 {
   "providers": {
     "ollama": {
@@ -160,11 +176,17 @@ if [[ ! -f "$MODELS_JSON" ]]; then
   }
 }
 EOF
+  fi
   echo "  Created: $MODELS_JSON"
 elif ! grep -q "qwen3-coder" "$MODELS_JSON" 2>/dev/null; then
   echo ""
   echo "WARNING: $MODELS_JSON exists but does not reference qwen3-coder."
   echo "         Add qwen3-coder:30b to the ollama provider manually if needed."
+elif ! grep -q "local-mlx" "$MODELS_JSON" 2>/dev/null; then
+  echo ""
+  echo "NOTE: $MODELS_JSON does not include the local-mlx provider."
+  echo "      To use LoRA adapters on Apple Silicon, merge the local-mlx"
+  echo "      block from: $TEMPLATE"
 fi
 
 # --- Summary ---

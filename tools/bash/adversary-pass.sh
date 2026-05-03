@@ -7,10 +7,15 @@
 #   adversary-pass.sh <target> --revise  # review, then revise if CONCERNS/FAIL
 #
 # Options:
-#   <target>   File path, diff file, or "HEAD" to review working tree changes
-#   --revise   If verdict is CONCERNS or FAIL, run a revision pass
-#   --model    Ollama model to use (default: qwen3-coder:30b)
-#   --quorum   Run quorum manually (3 independent peers, majority wins)
+#   <target>     File path, diff file, or "HEAD" to review working tree changes
+#   --revise     If verdict is CONCERNS or FAIL, run a revision pass
+#   --model      Model id to use (default: qwen3-coder:30b on ollama)
+#   --provider   Provider id from models.json (default: ollama)
+#   --adapter    Convenience: shorthand for the adversary adapter on local-mlx.
+#                Equivalent to --provider local-mlx --model qwen3-coder-7b+adversary
+#   --domain     Convenience: pick a worker adapter by domain
+#                (go|rust|python|terraform|general) on local-mlx
+#   --quorum     Run quorum manually (3 independent peers, majority wins)
 #
 # Output:
 #   Adversary review written to reviews/<basename>-<timestamp>.md
@@ -32,10 +37,23 @@ PROVIDER="ollama"
 shift
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --revise)  REVISE=1 ;;
-    --quorum)  QUORUM=1 ;;
-    --model)   MODEL="$2"; shift ;;
-    *)         echo "Unknown option: $1" >&2; exit 1 ;;
+    --revise)   REVISE=1 ;;
+    --quorum)   QUORUM=1 ;;
+    --model)    MODEL="$2"; shift ;;
+    --provider) PROVIDER="$2"; shift ;;
+    --adapter)  PROVIDER="local-mlx"; MODEL="qwen3-coder-7b+adversary" ;;
+    --domain)
+      PROVIDER="local-mlx"
+      case "$2" in
+        go)         MODEL="qwen3-coder-7b+go" ;;
+        rust)       MODEL="qwen3-coder-7b+rust" ;;
+        python)     MODEL="qwen3-coder-7b+python" ;;
+        terraform)  MODEL="qwen3-coder-7b+tf" ;;
+        general)    MODEL="qwen3-coder-7b" ;;
+        *)          echo "Unknown --domain: $2" >&2; exit 1 ;;
+      esac
+      shift ;;
+    *)          echo "Unknown option: $1" >&2; exit 1 ;;
   esac
   shift
 done

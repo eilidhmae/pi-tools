@@ -74,6 +74,34 @@ follow-up, the follow-up is lost silently. Ordering the writes the other way —
 persist next, then close current — ensures a crash between the two steps leaves
 the current task re-runnable rather than losing branches of work.
 
+## Adapter-Scoped Authority
+
+Model selection is orthogonal to role. The orchestrator, manager, worker,
+and adversary roles are defined by skill prompts and harness flags
+(`--no-write --no-edit` for adversary, etc.). The model id determines
+*what the agent knows about*, not *what it is allowed to do*.
+
+Two layers compose:
+
+| Layer        | What it controls                                       | Source of truth                          |
+| ------------ | ------------------------------------------------------ | ---------------------------------------- |
+| Role         | tool restrictions, prompt scaffolding                  | `skills/<role>/SKILL.md`                 |
+| Adapter      | language/domain specialization of the underlying LLM   | `extensions/adapter-route.ts` + `MODELS.md` |
+
+The orchestrator never selects an adapter for itself — it runs on the bare
+`qwen3-coder-7b` (or `qwen3-coder:30b` on the legacy Ollama path) so that
+its broad coverage is preserved for cross-lineage reasoning. Managers
+and workers may run with any adapter. Adversaries always run with the
+`+adversary` adapter when one is installed; otherwise the base.
+
+The pi harness reads the model id from `--model` and routes via
+`models.json`. Today's Ollama-only deployments are unaffected: skip the
+`local-mlx` provider entirely and the routing degrades to the existing
+`qwen3-coder:30b` flow.
+
+See `MODELS.md` for the operator guide and `model-plan.md` for the full
+design rationale.
+
 ## Lineage-Scoped Writes
 
 When a manager's dispatch prompt contains a `LINEAGE_ID`, the manager's writes

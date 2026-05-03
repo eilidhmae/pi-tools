@@ -99,6 +99,12 @@ issues, say so. Do not bury findings in qualifiers or optimistic language.
 End with: **PASS**, **CONCERNS**, or **FAIL** and specific file:line references
 for any issues.
 
+If you are running as `/skill:adversary` (full review skill, not this self-
+review prompt), also emit the structured `adversary-review` fenced YAML
+block — see `skills/adversary/SKILL.md` → "Structured block (for the
+parser)" for the v1 schema. The capture pipeline depends on it. This
+self-review prompt is informal and does not require the structured block.
+
 ## Escalation
 
 Self-review is biased — you are grading your own work. If your verdict is

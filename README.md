@@ -32,13 +32,23 @@ pi-tools/
 │   └── worker/SKILL.md               # /skill:worker
 ├── prompts/
 │   └── adversary-review.md           # /adversary-review
+├── MODELS.md                         # adapter operator entry point
+├── model-plan.md                     # full LoRA pipeline design
 ├── extensions/
 │   ├── adversary-hook.ts             # post-write mechanical check
-│   └── quorum.ts                     # adversary quorum via RPC
-└── tools/bash/
-    ├── adversary-check.sh            # mechanical baseline (no LLM, exits 0)
-    ├── adversary-pass.sh             # headless adversary pipeline
-    └── gen-review-revise.sh          # generate → review → revise cycle
+│   ├── quorum.ts                     # adversary quorum via RPC
+│   ├── adapter-route.ts              # (role, domain) → model id
+│   ├── adversary-parse.ts            # YAML fence parser for adversary output
+│   └── adversary-capture.ts          # tier-classified training-example capture
+├── tools/bash/
+│   ├── adversary-check.sh            # mechanical baseline (no LLM, exits 0)
+│   ├── adversary-pass.sh             # headless adversary pipeline
+│   └── gen-review-revise.sh          # generate → review → revise cycle
+└── server/                           # local MLX/MOLA inference launch tooling
+    ├── bootstrap-mac.sh              # one-shot M5 Max setup
+    ├── models.json.template
+    ├── mlx-lm-multi/                 # default track (one process per adapter)
+    └── mola/                         # opt-in track (one base, many adapters)
 ```
 
 ## Install
@@ -76,15 +86,26 @@ go to `tools/bash/` under the repo root (not inside `.pi/agent/`).
 bash install.sh --force
 ```
 
-## Model
+## Models
 
-qwen3-coder:30b via Ollama (3.3B activated, 30B total, MoE — strong tool-calling,
-262K context). Non-thinking mode only — no `<think>` blocks; the step-by-step
-structure inside each `SKILL.md` is the reasoning scaffold.
+Two paths coexist:
 
-`install.sh` creates `~/.pi/agent/models.json` with ollama defaults if one does
-not already exist. See the heredoc in [`install.sh`](install.sh) (around
-line 144) for the exact block written.
+- **Existing (default)**: `qwen3-coder:30b` via Ollama (3.3B activated, 30B
+  total, MoE — strong tool-calling, 262K context). Non-thinking mode only.
+- **New (M5 Max + Apple Silicon)**: `qwen3-coder-7b` (4-bit MLX) base with
+  hot-swappable LoRA adapters (`+go`, `+rust`, `+python`, `+tf`,
+  `+adversary`) served via `mlx_lm.server` or MOLA on `localhost:8080`.
+
+The harness is adapter-agnostic: model selection flows through `--model`
+and `models.json`. Today's Ollama users see no behavior change.
+
+See [`MODELS.md`](MODELS.md) for the operator entry point (where adapter
+artifacts live, how to run pi with each one, dogfood procedure) and
+[`model-plan.md`](model-plan.md) for the full design rationale.
+
+`install.sh` creates `~/.pi/agent/models.json` with both providers
+(ollama + local-mlx) if one does not already exist. The local-mlx
+provider points at the inference server in [`server/`](server/).
 
 ## Usage
 
