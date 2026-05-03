@@ -44,7 +44,7 @@ source "$PY_ENV/bin/activate"
 
 say "Installing mlx-lm, huggingface_hub, fastapi, uvicorn…"
 uv pip install --upgrade \
-    'mlx-lm>=0.20.0' \
+    'mlx-lm>=0.31.2' \
     'huggingface_hub[cli]>=0.24' \
     'fastapi>=0.110' \
     'uvicorn>=0.30' \
@@ -53,10 +53,11 @@ uv pip install --upgrade \
 
 # 3. macOS + MLX sanity check.
 #
-# Apple Neural Accelerator support for M5 lands in macOS Tahoe 26.2 paired
-# with a recent mlx-lm. The mlx PACKAGE itself is on 0.x — its version
-# string does not encode neural-accelerator support — so we check the macOS
-# version (which does) and the mlx import (which must succeed) separately.
+# macOS Tahoe 26.2 is the baseline this pipeline is tested against. Whether
+# mlx-lm dispatches any work to the M5 Neural Accelerator on this release
+# is unconfirmed — MLX runs on Metal/GPU compute today. Treat the 26.2
+# floor as forward-looking (so future ANE-aware mlx-lm releases find a
+# capable host) rather than a guaranteed perf path.
 MLX_VERSION="$(python -c 'import mlx; print(mlx.__version__)')"
 say "MLX library version: $MLX_VERSION  (informational; mlx is on 0.x)"
 
@@ -78,8 +79,9 @@ except InvalidVersion as e:
     sys.exit(0)
 PY
 then
-    warn "macOS $MACOS_VERSION < 26.2 — Apple Neural Accelerators on M5"
-    warn "may fall back to GPU shader cores. Update macOS for full performance."
+    warn "macOS $MACOS_VERSION is below the tested baseline of 26.2."
+    warn "Inference will still run on Metal/GPU; consider updating to stay"
+    warn "on the supported floor for future MLX releases."
 fi
 
 # 4. Base model

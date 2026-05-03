@@ -67,6 +67,21 @@ Apple, CUDA/CPU, and Ollama/llama.cpp consumers:
 
 Released under tags like `worker-go-v1`, `worker-go-v2`, …
 
+### Variants and anti-patterns
+
+- **Q8 base as opt-in for capacity, not quality.** An operator wanting
+  more headroom can override `BASE_MODEL_REPO` in
+  [`server/bootstrap-mac.sh`](server/bootstrap-mac.sh) to an 8-bit Qwen3-Coder-7B
+  variant (verify the variant exists on Hugging Face before relying on it).
+  This is *not* a recommended quality upgrade for coding tasks — there is no
+  published benchmark showing a meaningful win over the 4-bit base for
+  Qwen3-Coder-7B.
+- **Do not fuse adapters into the base before serving.** The generic MLX
+  guidance to "fuse adapters into the model for faster inference" assumes a
+  single-model deployment. It actively hurts here: our routing layer expects
+  `base + --adapter-path` per process, and a pre-fused checkpoint produces N
+  redundant 5 GB merged weight sets with zero inference benefit.
+
 ---
 
 ## Running pi with an adapter (M5 Max)

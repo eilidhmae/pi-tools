@@ -73,3 +73,18 @@ Reasonable budgets on a 128 GB M5 Max with the default track:
 
 If you change either track and break those invariants, the harness will
 silently misroute or fall back to the base model.
+
+## Known mlx-lm server limitations
+
+These are upstream gaps as of `mlx-lm` v0.31.3 — flags that exist on
+`mlx_lm.generate` but are **not** wired through `mlx_lm.server`. Worth
+knowing so you don't burn time looking for a CLI knob that isn't there.
+
+- **No KV-cache quantization.** `--kv-bits`, `--kv-group-size`,
+  `--quantized-kv-start` are generate-only. For long-context (32k) workloads
+  on multiple hot adapters, the lever is `adapters.conf` size + `vm_stat`,
+  not server flags.
+- **No `--max-kv-size`.** A single runaway long-context request can't be
+  capped at the server CLI today.
+- Track upstream:
+  <https://github.com/ml-explore/mlx-examples/tree/main/llms/mlx_lm>.
