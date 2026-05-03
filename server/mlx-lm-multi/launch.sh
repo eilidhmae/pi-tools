@@ -14,6 +14,8 @@ BASE_MODEL_DIR="${BASE_MODEL_DIR:-$HOME/models/qwen3-coder-7b-4bit}"
 BASE_PORT="${BASE_PORT:-8090}"
 PROXY_PORT="${PROXY_PORT:-8080}"
 PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv}"
+PROMPT_CACHE_SIZE="${PI_PROMPT_CACHE_SIZE:-16}"
+PROMPT_CACHE_BYTES="${PI_PROMPT_CACHE_BYTES:-2147483648}"
 
 mkdir -p "$PIDS_DIR" "$LOG_DIR"
 
@@ -48,6 +50,8 @@ nohup mlx_lm.server \
     --model "$BASE_MODEL_DIR" \
     --port "$BASE_PORT" \
     --host 127.0.0.1 \
+    --prompt-cache-size "$PROMPT_CACHE_SIZE" \
+    --prompt-cache-bytes "$PROMPT_CACHE_BYTES" \
     >"$LOG_DIR/base.log" 2>&1 &
 echo $! > "$PIDS_DIR/base.pid"
 
@@ -83,6 +87,8 @@ if [[ -f "$CONF" ]]; then
             --adapter-path "$adapter_path" \
             --port "$port" \
             --host 127.0.0.1 \
+            --prompt-cache-size "$PROMPT_CACHE_SIZE" \
+            --prompt-cache-bytes "$PROMPT_CACHE_BYTES" \
             >"$LOG_DIR/$suffix.log" 2>&1 &
         echo $! > "$PIDS_DIR/$suffix.pid"
         ROUTES+=("$suffix:$port")
