@@ -14,8 +14,8 @@ if [[ "$(uname -m)" != "arm64" ]]; then
 fi
 
 MODELS_DIR="${MODELS_DIR:-$HOME/models}"
-BASE_MODEL_REPO="mlx-community/Qwen3-Coder-7B-Instruct-4bit"
-BASE_MODEL_DIR="$MODELS_DIR/qwen3-coder-7b-4bit"
+BASE_MODEL_REPO="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
+BASE_MODEL_DIR="$MODELS_DIR/qwen3-coder-30b-a3b-4bit"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-$HOME/src/llama.cpp}"
 
 say()   { printf "\033[1;36m==>\033[0m %s\n" "$*"; }
@@ -43,9 +43,12 @@ fi
 source "$PY_ENV/bin/activate"
 
 say "Installing mlx-lm, huggingface_hub, fastapi, uvicorn…"
+# huggingface_hub 0.34 (Oct 2024) introduced the canonical `hf` CLI; older
+# releases only ship `huggingface-cli`. The `[cli]` extra was removed in
+# 1.x because the CLI now ships in the base package.
 uv pip install --upgrade \
     'mlx-lm>=0.31.2' \
-    'huggingface_hub[cli]>=0.24' \
+    'huggingface_hub>=0.34' \
     'fastapi>=0.110' \
     'uvicorn>=0.30' \
     'pyyaml>=6.0' \
@@ -58,7 +61,7 @@ uv pip install --upgrade \
 # is unconfirmed — MLX runs on Metal/GPU compute today. Treat the 26.2
 # floor as forward-looking (so future ANE-aware mlx-lm releases find a
 # capable host) rather than a guaranteed perf path.
-MLX_VERSION="$(python -c 'import mlx; print(mlx.__version__)')"
+MLX_VERSION="$(python -c 'from importlib.metadata import version; print(version("mlx"))')"
 say "MLX library version: $MLX_VERSION  (informational; mlx is on 0.x)"
 
 MACOS_VERSION="$(sw_vers -productVersion 2>/dev/null || echo 0.0)"
@@ -88,7 +91,7 @@ fi
 mkdir -p "$MODELS_DIR"
 if [[ ! -d "$BASE_MODEL_DIR" || -z "$(ls -A "$BASE_MODEL_DIR" 2>/dev/null)" ]]; then
     say "Downloading base model $BASE_MODEL_REPO → $BASE_MODEL_DIR"
-    huggingface-cli download "$BASE_MODEL_REPO" --local-dir "$BASE_MODEL_DIR"
+    hf download "$BASE_MODEL_REPO" --local-dir "$BASE_MODEL_DIR"
 else
     say "Base model already present at $BASE_MODEL_DIR"
 fi
@@ -150,7 +153,7 @@ Next:
        curl -sS http://localhost:8080/v1/models | jq .
 
   5. Use it:
-       pi --provider local-mlx --model qwen3-coder-7b+go "your task"
+       pi --provider local-mlx --model qwen3-coder-30b-a3b+go "your task"
 
 See ../MODELS.md for the full operator guide.
 ================================================================================

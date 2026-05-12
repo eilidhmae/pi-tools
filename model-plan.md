@@ -1,12 +1,23 @@
 # Plan: LoRA adapter pipeline for Qwen3-Coder under the pi harness
 
+> **Erratum (post-hardware-arrival).** This plan was originally drafted
+> against a hypothetical `Qwen3-Coder-7B` dense base. The Qwen team
+> released Qwen3-Coder only as MoE (`30B-A3B-Instruct`, `480B-A35B-Instruct`,
+> and the `Next` variant); the 7B dense never materialized. Identifiers
+> below have been renamed to `qwen3-coder-30b-a3b`, but the **LoRA
+> training recipes and adapter-targeting assumptions in this document
+> still reflect dense-model thinking** and need an MoE-aware pass before
+> any adapter is trained. Verified on M5 Max
+> (mlx-lm 0.31.3, mlx 0.31.2): the 30B-A3B-4bit base loads in ~16.3 GB
+> resident and decodes at ~96 tok/s — see PR description for transcript.
+
 ## Context
 
 The pi harness (`github.com/eilidhmae/pi-tools`) today drives an
 orchestrator → manager → worker → adversary loop against a single
 `qwen3-coder:30b` model on Ollama. The shared design conversation
-(M5 Max + MLX + Qwen3-Coder-7B + LoRA adapters + multi-adapter inference)
-proposes a parallel track: a small base model with hot-swappable LoRA
+(M5 Max + MLX + Qwen3-Coder-30B-A3B + LoRA adapters + multi-adapter inference)
+proposes a parallel track: a MoE base with hot-swappable LoRA
 adapters specialized per language/role, served locally, dispatched per
 agent role.
 
@@ -166,8 +177,8 @@ model. All formats are deterministic from the same training run.
 ## Inference (two-track)
 
 Both tracks expose an OpenAI-compatible endpoint at `http://localhost:8080/v1`
-and use the **same model-id naming convention** (`qwen3-coder-7b`,
-`qwen3-coder-7b+go`, `qwen3-coder-7b+adversary`, …). The pi harness
+and use the **same model-id naming convention** (`qwen3-coder-30b-a3b`,
+`qwen3-coder-30b-a3b+go`, `qwen3-coder-30b-a3b+adversary`, …). The pi harness
 cannot tell which track is running, and `models.json` is identical.
 
 ### Default track: `mlx-lm-multi` (one process per adapter, proxy-routed)
@@ -236,7 +247,7 @@ reviews). Disagreements stashed separately. Tiered by (model heterogeneity
 ### `tools/bash/adversary-pass.sh`, `gen-review-revise.sh` (modified)
 
 Add `--adapter` / `--domain` flags. Default behavior unchanged when not
-passed. Forward to spawned `pi` via `--model qwen3-coder-7b+<suffix>`.
+passed. Forward to spawned `pi` via `--model qwen3-coder-30b-a3b+<suffix>`.
 
 ### `skills/orchestrator/SKILL.md`, `skills/manager/SKILL.md` (modified)
 
@@ -254,7 +265,7 @@ captures begin (changing the schema invalidates the dataset).
 ### `server/models.json.template`
 
 New `local-mlx` provider pointing at `localhost:8080`. Lists
-`qwen3-coder-7b` + the seven `+suffix` model ids. `compat.supportsDeveloperRole: false`.
+`qwen3-coder-30b-a3b` + the seven `+suffix` model ids. `compat.supportsDeveloperRole: false`.
 Coexists with the existing `ollama` provider — operators choose at
 `--provider` time.
 
@@ -290,7 +301,7 @@ Per adapter, the recipe in `pi-adapter-<name>/training/scripts/`:
    Source-specific (e.g. for `worker-go`: walks Go repos, extracts
    function/test pairs, filters by length and license).
 2. **`train.sh`** — `mlx_lm.lora` with `config.yaml` hyperparams.
-   Reasonable defaults: 4-bit base (`mlx-community/Qwen3-Coder-7B-Instruct-4bit`),
+   Reasonable defaults: 4-bit base (`mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit`),
    rank 16, alpha 32, learning rate 1e-5, batch size 4, ~1500 iters,
    gradient checkpointing on. Writes to `adapters/<name>/`.
 3. **`eval.py`** — held-out eval + format-compliance check (does the
@@ -306,7 +317,7 @@ Steps 4–6 are M5 Max only (need MLX + adequate disk; GGUF convert is
 
 `bootstrap-mac.sh` handles first-time setup: Homebrew deps, `uv`/Python,
 `mlx-lm`, `huggingface_hub`, llama.cpp build for GGUF, base-model download
-to `~/models/qwen3-coder-7b-4bit`, MLX 26.2+ check (Neural Accelerators).
+to `~/models/qwen3-coder-30b-a3b-4bit`, MLX 26.2+ check (Neural Accelerators).
 
 ---
 
@@ -363,16 +374,16 @@ Only `worker-go` and `adversary-general` get datasets/configs/training plumbing.
    M5 Max now uses the *publicly released* adapter, not the in-tree
    training output.
 6. `cd pi-tools/server && ./mlx-lm-multi/launch.sh worker-go` →
-   `:8080` healthy, `curl /v1/models` lists `qwen3-coder-7b+go`.
+   `:8080` healthy, `curl /v1/models` lists `qwen3-coder-30b-a3b+go`.
 7. From any project on the M5 Max: `pi --provider local-mlx --model
-   qwen3-coder-7b+go "write a table-driven test for this function"`
+   qwen3-coder-30b-a3b+go "write a table-driven test for this function"`
    → response.
 8. Run a real worker task through pi with the adapter; let the adversary
    quorum review it; confirm a tier-1 capture lands in
    `~/.pi/agent/training/adversary-captures/tier-1.jsonl`.
 9. **Dogfood the GGUF path on the same Mac**:
    `gh release download worker-go-v1 -p 'merged-q4_k_m.gguf' &&
-   ollama create qwen3-coder-7b-go -f Modelfile && ollama run …`
+   ollama create qwen3-coder-30b-a3b-go -f Modelfile && ollama run …`
    → confirms the non-Apple distribution artifact also works on the
    trainer's machine before any external consumer sees it.
 10. Switch MLX track to MOLA: `./server/mola/launch.sh` → same

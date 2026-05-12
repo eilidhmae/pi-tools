@@ -90,12 +90,14 @@ bash install.sh --force
 
 ## Models
 
-Two paths coexist:
+Two runtime paths over the **same** underlying model — Qwen3-Coder
+30B-A3B (MoE, 3B activated of 30B total, 262K context, non-thinking
+mode only):
 
-- **Existing (default)**: `qwen3-coder:30b` via Ollama (3.3B activated, 30B
-  total, MoE — strong tool-calling, 262K context). Non-thinking mode only.
-- **New (M5 Max + Apple Silicon)**: `qwen3-coder-7b` (4-bit MLX) base with
-  hot-swappable LoRA adapters (`+go`, `+rust`, `+python`, `+tf`,
+- **Existing (default)**: `qwen3-coder:30b` via Ollama. Strong
+  tool-calling, no Apple-Silicon requirement.
+- **New (M5 Max + Apple Silicon)**: `qwen3-coder-30b-a3b` (4-bit MLX)
+  with hot-swappable LoRA adapters (`+go`, `+rust`, `+python`, `+tf`,
   `+adversary`) served via `mlx_lm.server` or MOLA on `localhost:8080`.
 
 The harness is adapter-agnostic: model selection flows through `--model`

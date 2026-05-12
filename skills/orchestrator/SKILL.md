@@ -113,12 +113,12 @@ Domain inference (orchestrator-side rule of thumb; managers may override):
 
 | Task signal contains                          | Domain     | Model id                    |
 | --------------------------------------------- | ---------- | --------------------------- |
-| `.go` files, `goroutine`, `go.mod`, `go test` | go         | `qwen3-coder-7b+go`         |
-| `.rs` files, `Cargo.toml`, `cargo`, lifetime  | rust       | `qwen3-coder-7b+rust`       |
-| `.py` files, `pyproject.toml`, `uv`, `pytest` | python     | `qwen3-coder-7b+python`     |
-| `.tf` files, `terraform plan`, HCL            | terraform  | `qwen3-coder-7b+tf`         |
-| Adversary review (any language)               | adversary  | `qwen3-coder-7b+adversary`  |
-| None of the above                             | general    | `qwen3-coder-7b`            |
+| `.go` files, `goroutine`, `go.mod`, `go test` | go         | `qwen3-coder-30b-a3b+go`         |
+| `.rs` files, `Cargo.toml`, `cargo`, lifetime  | rust       | `qwen3-coder-30b-a3b+rust`       |
+| `.py` files, `pyproject.toml`, `uv`, `pytest` | python     | `qwen3-coder-30b-a3b+python`     |
+| `.tf` files, `terraform plan`, HCL            | terraform  | `qwen3-coder-30b-a3b+tf`         |
+| Adversary review (any language)               | adversary  | `qwen3-coder-30b-a3b+adversary`  |
+| None of the above                             | general    | `qwen3-coder-30b-a3b`            |
 
 Spawn pattern:
 

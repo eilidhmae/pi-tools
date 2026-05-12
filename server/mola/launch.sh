@@ -16,7 +16,7 @@ PIDS_DIR="$SCRIPT_DIR/pids"
 LOG_DIR="$SCRIPT_DIR/logs"
 MOLA_DIR="${MOLA_DIR:-$HOME/src/mola}"
 MOLA_REPO="${MOLA_REPO:-https://github.com/Goekdeniz-Guelmez/mlx-lm-mola}"
-BASE_MODEL_DIR="${BASE_MODEL_DIR:-$HOME/models/qwen3-coder-7b-4bit}"
+BASE_MODEL_DIR="${BASE_MODEL_DIR:-$HOME/models/qwen3-coder-30b-a3b-4bit}"
 PORT="${PROXY_PORT:-8080}"
 # Isolated venv — the MOLA install patches mlx-lm in-place; do NOT share with
 # the mlx-lm-multi venv.
@@ -41,7 +41,7 @@ if [[ ! -f "$SENTINEL" ]]; then
     source "$PY_ENV/bin/activate"
     uv pip install --upgrade \
         'mlx-lm>=0.20.0' \
-        'huggingface_hub[cli]>=0.24' \
+        'huggingface_hub>=0.34' \
         'fastapi>=0.110' \
         'uvicorn>=0.30' \
         'pyyaml>=6.0' \

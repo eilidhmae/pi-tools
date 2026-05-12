@@ -29,7 +29,7 @@ export interface ModelForOptions {
   adversaryAdapter?: boolean;
 }
 
-const BASE = "qwen3-coder-7b";
+const BASE = "qwen3-coder-30b-a3b";
 
 const ADAPTER_BY_DOMAIN: Record<Domain, string> = {
   go:        `${BASE}+go`,
