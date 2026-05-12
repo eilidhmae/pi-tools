@@ -1,0 +1,41 @@
+# Baseline LoRA recipe for Qwen3-Coder-30B-A3B (MLX).
+#
+# Captures the hyperparameters and target-module choice recommended in
+# research/moe-lora-recipe.md. Attention-only LoRA on the last 16 of
+# 48 transformer blocks. Use as-is for the canonical baseline.
+#
+# Overlay paths at the command line, e.g.:
+#   mlx_lm.lora --config recipes/baseline-lora.yaml \
+#               --model "$HOME/models/qwen3-coder-30b-a3b-4bit" \
+#               --data ./data \
+#               --adapter-path ./out
+#
+# Override `iters`, `batch_size`, `max_seq_length` per dataset. Tune to
+# the val-loss curve — stop before val loss starts rising.
+
+train: true
+fine_tune_type: lora
+
+num_layers: 16
+batch_size: 1
+iters: 1000
+learning_rate: 1.0e-5
+max_seq_length: 2048
+grad_checkpoint: true
+
+steps_per_report: 10
+steps_per_eval: 50
+val_batches: 25
+save_every: 100
+
+seed: 0
+
+lora_parameters:
+  rank: 8
+  scale: 20.0
+  dropout: 0.0
+  keys:
+    - "self_attn.q_proj"
+    - "self_attn.k_proj"
+    - "self_attn.v_proj"
+    - "self_attn.o_proj"

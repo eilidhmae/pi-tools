@@ -4,12 +4,16 @@
 > against a hypothetical `Qwen3-Coder-7B` dense base. The Qwen team
 > released Qwen3-Coder only as MoE (`30B-A3B-Instruct`, `480B-A35B-Instruct`,
 > and the `Next` variant); the 7B dense never materialized. Identifiers
-> below have been renamed to `qwen3-coder-30b-a3b`, but the **LoRA
-> training recipes and adapter-targeting assumptions in this document
-> still reflect dense-model thinking** and need an MoE-aware pass before
-> any adapter is trained. Verified on M5 Max
-> (mlx-lm 0.31.3, mlx 0.31.2): the 30B-A3B-4bit base loads in ~16.3 GB
-> resident and decodes at ~96 tok/s — see PR description for transcript.
+> below have been renamed to `qwen3-coder-30b-a3b`. The LoRA recipes
+> originally drafted here against dense-model assumptions have been
+> superseded by an empirically-grounded MoE recipe — see
+> [`research/moe-lora-recipe.md`](research/moe-lora-recipe.md) for the
+> canonical attention-only baseline and the evidence behind it. The
+> remaining sections of this document still describe the pipeline
+> architecture (capture → train → release → dogfood) faithfully; treat
+> per-adapter target-module specifics as superseded where they conflict
+> with the recipe document. Verified on M5 Max (mlx-lm 0.31.3,
+> mlx 0.31.2): base loads in ~16.3 GB resident, decodes at ~96 tok/s.
 
 ## Context
 
