@@ -3,7 +3,7 @@
 [MOLA](https://github.com/Goekdeniz-Guelmez/mlx-lm-mola) (or the current
 upstream multi-LoRA mlx fork; check the repo before launching) keeps one
 base model resident in unified memory and routes per-request to one of N
-LoRA adapters. On a 128 GB M5 Max with the 4-bit Qwen3-Coder-7B base, that
+LoRA adapters. On a 128 GB M5 Max with the 4-bit Qwen3-Coder-30B-A3B base, that
 fits the base + 8+ adapters in well under 10 GB total — versus ~5 GB ×N
 for the default `mlx-lm-multi` track.
 
@@ -25,7 +25,7 @@ running.
 
 `launch.sh` clones MOLA into `~/src/mola/` if absent, applies the patch,
 and starts the server bound to `:8080` with the same model id naming
-(`qwen3-coder-7b+<suffix>`). Adapters listed in `../mlx-lm-multi/adapters.conf`
+(`qwen3-coder-30b-a3b+<suffix>`). Adapters listed in `../mlx-lm-multi/adapters.conf`
 are reused — single source of truth for which adapters are hot.
 
 ## Stop

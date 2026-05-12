@@ -35,7 +35,7 @@ import { captureFromQuorum, ReviewerOutput } from "./adversary-capture";
 // --- Configuration ---
 //
 // Single-model legacy:        PI_QUORUM_MODEL=qwen3-coder:30b
-// Heterogeneous quorum (new): PI_QUORUM_MODELS="qwen3-coder:30b@ollama,qwen3-coder-7b+adversary@local-mlx"
+// Heterogeneous quorum (new): PI_QUORUM_MODELS="qwen3-coder:30b@ollama,qwen3-coder-30b-a3b+adversary@local-mlx"
 //                             temperatures parallel CSV (defaults shown):
 //                             PI_QUORUM_TEMPS="0.2,0.5,0.7"
 const LEGACY_MODEL = process.env.PI_QUORUM_MODEL ?? "qwen3-coder:30b";

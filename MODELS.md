@@ -20,15 +20,15 @@ Two model paths coexist under pi:
 Adapter-based model ids look like:
 
 ```
-qwen3-coder-7b              # base, no adapter
-qwen3-coder-7b+go           # + worker-go
-qwen3-coder-7b+rust         # + worker-rust       (skeleton only in v1)
-qwen3-coder-7b+python       # + worker-python     (skeleton only in v1)
-qwen3-coder-7b+tf           # + worker-tf         (skeleton only in v1)
-qwen3-coder-7b+adversary    # + adversary-general
+qwen3-coder-30b-a3b              # base, no adapter
+qwen3-coder-30b-a3b+go           # + worker-go
+qwen3-coder-30b-a3b+rust         # + worker-rust       (skeleton only in v1)
+qwen3-coder-30b-a3b+python       # + worker-python     (skeleton only in v1)
+qwen3-coder-30b-a3b+tf           # + worker-tf         (skeleton only in v1)
+qwen3-coder-30b-a3b+adversary    # + adversary-general
 ```
 
-The harness selects an adapter by passing `--model qwen3-coder-7b+<suffix>`.
+The harness selects an adapter by passing `--model qwen3-coder-30b-a3b+<suffix>`.
 The orchestrator never selects an adapter for itself; it dispatches
 managers/workers with adapters chosen from the routing table in
 `extensions/adapter-route.ts`.
@@ -39,8 +39,8 @@ managers/workers with adapters chosen from the routing table in
 
 ### Base model
 
-`mlx-community/Qwen3-Coder-7B-Instruct-4bit` on Hugging Face. Downloaded
-to `~/models/qwen3-coder-7b-4bit/` by `server/bootstrap-mac.sh`.
+`mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit` on Hugging Face. Downloaded
+to `~/models/qwen3-coder-30b-a3b-4bit/` by `server/bootstrap-mac.sh`.
 
 ### Adapters (one GitHub repo per adapter, all MIT, all public)
 
@@ -71,11 +71,11 @@ Released under tags like `worker-go-v1`, `worker-go-v2`, …
 
 - **Q8 base as opt-in for capacity, not quality.** An operator wanting
   more headroom can override `BASE_MODEL_REPO` in
-  [`server/bootstrap-mac.sh`](server/bootstrap-mac.sh) to an 8-bit Qwen3-Coder-7B
+  [`server/bootstrap-mac.sh`](server/bootstrap-mac.sh) to an 8-bit Qwen3-Coder-30B-A3B
   variant (verify the variant exists on Hugging Face before relying on it).
   This is *not* a recommended quality upgrade for coding tasks — there is no
   published benchmark showing a meaningful win over the 4-bit base for
-  Qwen3-Coder-7B.
+  Qwen3-Coder-30B-A3B.
 - **Do not fuse adapters into the base before serving.** The generic MLX
   guidance to "fuse adapters into the model for faster inference" assumes a
   single-model deployment. It actively hurts here: our routing layer expects
@@ -116,7 +116,7 @@ cd ~/src/pi-tools/server
 ### Use it from pi
 
 ```bash
-pi --provider local-mlx --model qwen3-coder-7b+go \
+pi --provider local-mlx --model qwen3-coder-30b-a3b+go \
     "write a table-driven test for ParseConfig in pkg/config/parse.go"
 ```
 
@@ -154,14 +154,14 @@ FROM /tmp/merged-q4_k_m.gguf
 PARAMETER num_ctx 32768
 EOF
 
-ollama create qwen3-coder-7b-go -f /tmp/Modelfile
-ollama run qwen3-coder-7b-go "write a table-driven test for ParseConfig"
+ollama create qwen3-coder-30b-a3b-go -f /tmp/Modelfile
+ollama run qwen3-coder-30b-a3b-go "write a table-driven test for ParseConfig"
 ```
 
 Then point pi at Ollama:
 
 ```bash
-pi --provider ollama --model qwen3-coder-7b-go "..."
+pi --provider ollama --model qwen3-coder-30b-a3b-go "..."
 ```
 
 ---

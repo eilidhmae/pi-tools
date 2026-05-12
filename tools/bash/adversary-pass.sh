@@ -12,7 +12,7 @@
 #   --model      Model id to use (default: qwen3-coder:30b on ollama)
 #   --provider   Provider id from models.json (default: ollama)
 #   --adapter    Convenience: shorthand for the adversary adapter on local-mlx.
-#                Equivalent to --provider local-mlx --model qwen3-coder-7b+adversary
+#                Equivalent to --provider local-mlx --model qwen3-coder-30b-a3b+adversary
 #   --domain     Convenience: pick a worker adapter by domain
 #                (go|rust|python|terraform|general) on local-mlx
 #   --quorum     Run quorum manually (3 independent peers, majority wins)
@@ -41,15 +41,15 @@ while [[ $# -gt 0 ]]; do
     --quorum)   QUORUM=1 ;;
     --model)    MODEL="$2"; shift ;;
     --provider) PROVIDER="$2"; shift ;;
-    --adapter)  PROVIDER="local-mlx"; MODEL="qwen3-coder-7b+adversary" ;;
+    --adapter)  PROVIDER="local-mlx"; MODEL="qwen3-coder-30b-a3b+adversary" ;;
     --domain)
       PROVIDER="local-mlx"
       case "$2" in
-        go)         MODEL="qwen3-coder-7b+go" ;;
-        rust)       MODEL="qwen3-coder-7b+rust" ;;
-        python)     MODEL="qwen3-coder-7b+python" ;;
-        terraform)  MODEL="qwen3-coder-7b+tf" ;;
-        general)    MODEL="qwen3-coder-7b" ;;
+        go)         MODEL="qwen3-coder-30b-a3b+go" ;;
+        rust)       MODEL="qwen3-coder-30b-a3b+rust" ;;
+        python)     MODEL="qwen3-coder-30b-a3b+python" ;;
+        terraform)  MODEL="qwen3-coder-30b-a3b+tf" ;;
+        general)    MODEL="qwen3-coder-30b-a3b" ;;
         *)          echo "Unknown --domain: $2" >&2; exit 1 ;;
       esac
       shift ;;

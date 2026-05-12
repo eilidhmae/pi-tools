@@ -65,8 +65,8 @@ Reasonable budgets on a 128 GB M5 Max with the default track:
 
 ## Schema invariants the harness depends on
 
-- `/v1/models` includes a model with `id == "qwen3-coder-7b"` and one
-  per `qwen3-coder-7b+<suffix>` configured adapter.
+- `/v1/models` includes a model with `id == "qwen3-coder-30b-a3b"` and one
+  per `qwen3-coder-30b-a3b+<suffix>` configured adapter.
 - `/v1/chat/completions` accepts the `model` field in `+suffix` form
   and returns OpenAI-compatible JSON. No `developer` role.
 - `/healthz` returns `{"ok": true, "track": "...", "adapters": [...]}`.

@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
 
-BASE_MODEL_ID = "qwen3-coder-7b"
+BASE_MODEL_ID = "qwen3-coder-30b-a3b"
 TRACK = "mlx-lm-multi"
 
 

@@ -141,7 +141,7 @@ Exclude: project history, other workers' tasks, coordination concerns.
 ### Adapter passthrough
 
 If the orchestrator dispatched you with a `--model` flag (e.g.
-`qwen3-coder-7b+go`), pass that **same model id** to every worker you
+`qwen3-coder-30b-a3b+go`), pass that **same model id** to every worker you
 spawn. Workers inherit your domain. If you decide a single sub-task is
 better served by a different specialist (e.g. a Rust port arises inside
 a Go-domain task), pick the appropriate id from the table in
@@ -150,7 +150,7 @@ in your worker dispatch.
 
 For adversary reviews you spawn, prefer the `+adversary` adapter when it
 is installed on a `local-mlx` provider — pass `--adapter` to
-`adversary-pass.sh` (or `--model qwen3-coder-7b+adversary` to `pi`
+`adversary-pass.sh` (or `--model qwen3-coder-30b-a3b+adversary` to `pi`
 directly). On Ollama-only deployments the adapter is unavailable; in
 that case let the adversary stage inherit the worker's provider/model.
 This is operator-opt-in, mirroring `AGENTS.md` → "Adapter-Scoped

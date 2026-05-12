@@ -15,7 +15,7 @@
 #   default            adversary inherits the worker's --provider/--model
 #                      (works on Ollama-only deployments)
 #   --adversary-adapter call adversary-pass.sh --adapter, which uses
-#                      qwen3-coder-7b+adversary on local-mlx. Requires
+#                      qwen3-coder-30b-a3b+adversary on local-mlx. Requires
 #                      the +adversary adapter to be installed.
 #
 # Stages:
@@ -47,11 +47,11 @@ while [[ $# -gt 0 ]]; do
     --domain)
       PROVIDER="local-mlx"
       case "$2" in
-        go)         MODEL="qwen3-coder-7b+go" ;;
-        rust)       MODEL="qwen3-coder-7b+rust" ;;
-        python)     MODEL="qwen3-coder-7b+python" ;;
-        terraform)  MODEL="qwen3-coder-7b+tf" ;;
-        general)    MODEL="qwen3-coder-7b" ;;
+        go)         MODEL="qwen3-coder-30b-a3b+go" ;;
+        rust)       MODEL="qwen3-coder-30b-a3b+rust" ;;
+        python)     MODEL="qwen3-coder-30b-a3b+python" ;;
+        terraform)  MODEL="qwen3-coder-30b-a3b+tf" ;;
+        general)    MODEL="qwen3-coder-30b-a3b" ;;
         *)          echo "Unknown --domain: $2" >&2; exit 1 ;;
       esac
       shift ;;
@@ -62,7 +62,7 @@ done
 
 # Build the adversary invocation flags once. Default: inherit the
 # worker's provider/model (Ollama-friendly). Opt-in: --adapter, which
-# adversary-pass.sh maps to local-mlx + qwen3-coder-7b+adversary.
+# adversary-pass.sh maps to local-mlx + qwen3-coder-30b-a3b+adversary.
 if [[ "$ADVERSARY_ADAPTER" -eq 1 ]]; then
   ADVERSARY_FLAGS=( --adapter )
 else

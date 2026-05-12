@@ -20,7 +20,7 @@ import { parseAdversaryReview, AdversaryReview, Finding } from "./adversary-pars
 export type Verdict = "PASS" | "CONCERNS" | "FAIL";
 
 export interface ReviewerOutput {
-  modelId: string;          // e.g. "qwen3-coder-7b+adversary"
+  modelId: string;          // e.g. "qwen3-coder-30b-a3b+adversary"
   temperature: number;
   rawOutput: string;        // verbatim assistant text
 }

@@ -3,7 +3,7 @@
 Local inference launch tooling for the Qwen3-Coder + LoRA adapter setup.
 Two tracks expose the **same** OpenAI-compatible endpoint at
 `http://localhost:8080/v1` and use the **same** model id naming
-(`qwen3-coder-7b`, `qwen3-coder-7b+<adapter>`), so the pi harness and
+(`qwen3-coder-30b-a3b`, `qwen3-coder-30b-a3b+<adapter>`), so the pi harness and
 `models.json` are identical between them.
 
 | Track          | When to use                                                | Memory   | Stability  |

@@ -22,12 +22,12 @@
         "supportsReasoningEffort": false
       },
       "models": [
-        { "id": "qwen3-coder-7b",            "name": "Qwen3-Coder 7B (base)",                "contextWindow": 32768 },
-        { "id": "qwen3-coder-7b+go",         "name": "Qwen3-Coder 7B + Go specialist",       "contextWindow": 32768 },
-        { "id": "qwen3-coder-7b+rust",       "name": "Qwen3-Coder 7B + Rust specialist",     "contextWindow": 32768 },
-        { "id": "qwen3-coder-7b+python",     "name": "Qwen3-Coder 7B + Python specialist",   "contextWindow": 32768 },
-        { "id": "qwen3-coder-7b+tf",         "name": "Qwen3-Coder 7B + Terraform specialist","contextWindow": 32768 },
-        { "id": "qwen3-coder-7b+adversary",  "name": "Qwen3-Coder 7B + Adversary",           "contextWindow": 32768 }
+        { "id": "qwen3-coder-30b-a3b",            "name": "Qwen3-Coder 30B-A3B (base)",                "contextWindow": 262144 },
+        { "id": "qwen3-coder-30b-a3b+go",         "name": "Qwen3-Coder 30B-A3B + Go specialist",       "contextWindow": 262144 },
+        { "id": "qwen3-coder-30b-a3b+rust",       "name": "Qwen3-Coder 30B-A3B + Rust specialist",     "contextWindow": 262144 },
+        { "id": "qwen3-coder-30b-a3b+python",     "name": "Qwen3-Coder 30B-A3B + Python specialist",   "contextWindow": 262144 },
+        { "id": "qwen3-coder-30b-a3b+tf",         "name": "Qwen3-Coder 30B-A3B + Terraform specialist","contextWindow": 262144 },
+        { "id": "qwen3-coder-30b-a3b+adversary",  "name": "Qwen3-Coder 30B-A3B + Adversary",           "contextWindow": 262144 }
       ]
     }
   }

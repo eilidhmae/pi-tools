@@ -89,11 +89,11 @@ Two layers compose:
 | Adapter      | language/domain specialization of the underlying LLM   | `extensions/adapter-route.ts` + `MODELS.md` |
 
 The orchestrator never selects an adapter for itself — it runs on the bare
-`qwen3-coder-7b` (or `qwen3-coder:30b` on the legacy Ollama path) so that
+`qwen3-coder-30b-a3b` (or `qwen3-coder:30b` on the legacy Ollama path) so that
 its broad coverage is preserved for cross-lineage reasoning. Managers
 and workers may run with any adapter. Adversaries can run with the
 `+adversary` adapter via the `--adapter` flag in `adversary-pass.sh` (or
-`--model qwen3-coder-7b+adversary` directly); this is operator-opted-in
+`--model qwen3-coder-30b-a3b+adversary` directly); this is operator-opted-in
 and the harness does not auto-detect or auto-switch.
 
 The pi harness reads the model id from `--model` and routes via
