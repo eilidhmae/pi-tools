@@ -3,32 +3,47 @@
 # adversary-pass.sh -- Run an adversary review on a file or diff.
 #
 # Usage:
-#   adversary-pass.sh <target>           # review a file or diff
-#   adversary-pass.sh <target> --revise  # review, then revise if CONCERNS/FAIL
+#   adversary-pass.sh <target>           # review a file, "HEAD", or "STAGED"
+#   adversary-pass.sh <target> --quorum  # also run 2 peer reviewers
+#
+# Targets:
+#   <path>      Path to a single source file. Contents are inlined into
+#               the prompt; no file-system tools are needed by the model.
+#   HEAD        Review `git diff HEAD` (working-tree changes).
+#   STAGED      Review `git diff --cached` (pre-commit semantics).
 #
 # Options:
-#   <target>     File path, diff file, or "HEAD" to review working tree changes
-#   --revise     If verdict is CONCERNS or FAIL, run a revision pass
-#   --model      Model id to use (default: qwen3-coder:30b on ollama)
-#   --provider   Provider id from models.json (default: ollama)
-#   --adapter    Convenience: shorthand for the adversary adapter on local-mlx.
-#                Equivalent to --provider local-mlx --model qwen3-coder-30b-a3b+adversary
-#   --domain     Convenience: pick a worker adapter by domain
-#                (go|rust|python|terraform|general) on local-mlx
-#   --quorum     Run quorum manually (3 independent peers, majority wins)
+#   --revise     If verdict is CONCERNS/FAIL, run a revision pass.
+#                NOTE: revise needs file-system tools, which require the
+#                interactive pi mode that this script intentionally avoids.
+#                The revise pass is a best-effort passthrough and may not
+#                work headless in pi 0.74.0; see OPERATIONS.md.
+#   --model      Model id (default: qwen3-coder:30b on ollama).
+#   --provider   Provider id from models.json (default: ollama).
+#   --adapter    Shorthand: --provider local-mlx --model qwen3-coder-30b-a3b+adversary.
+#   --domain     Shorthand: pick worker adapter by domain
+#                (go|rust|python|terraform|general) on local-mlx.
+#   --quorum     Run 2 additional peer reviewers; majority decides.
 #
 # Output:
 #   Adversary review written to reviews/<basename>-<timestamp>.md
-#   Quorum summary appended if verdict is CONCERNS or FAIL
+#   Both the prose summary and the fenced `adversary-review` YAML block
+#   land in the file. Quorum peer reviews appended if --quorum and the
+#   primary verdict is CONCERNS/FAIL.
 #
-# Note: extensions/quorum.ts handles quorum automatically when pi is running
-# interactively. This script provides the same capability for headless/CI use.
+# Why deterministic single-turn:
+#   pi 0.74.0 -p (print mode) with autoloaded tools/skills/extensions
+#   silently enters a multi-turn loop that exits with empty stdout.
+#   This script invokes pi with all autoloads OFF and supplies the skill
+#   via --append-system-prompt; the target's content (file or diff) is
+#   inlined into the user prompt because the model has no tool access.
+#   See ~/src/my-macbook/OPERATIONS.md and decision 2026-05-14 for why.
 #
 # Always exits 0 (informational, not a gate).
 
 set -euo pipefail
 
-TARGET="${1:?Usage: adversary-pass.sh <target> [--revise] [--model <model>] [--quorum]}"
+TARGET="${1:?Usage: adversary-pass.sh <target|HEAD|STAGED> [--quorum] [--revise]}"
 REVISE=0
 QUORUM=0
 MODEL="qwen3-coder:30b"
@@ -59,9 +74,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-BASENAME=$(basename "$TARGET" | sed 's/\.[^.]*$//')
+TARGET_LABEL=$(echo "$TARGET" | tr '/' '_' | sed 's/\.[^.]*$//')
 REVIEW_DIR="reviews"
-REVIEW_FILE="${REVIEW_DIR}/${BASENAME}-${TIMESTAMP}.md"
+REVIEW_FILE="${REVIEW_DIR}/${TARGET_LABEL}-${TIMESTAMP}.md"
+
+# --- Resolve adversary SKILL.md ---
 SKILL_GLOBAL="${HOME}/.pi/agent/skills/adversary/SKILL.md"
 SKILL_LOCAL=".pi/agent/skills/adversary/SKILL.md"
 SKILL_PATH="$SKILL_GLOBAL"
@@ -77,30 +94,118 @@ fi
 
 mkdir -p "$REVIEW_DIR"
 
+# --- Build the inlined context payload ---
+# The model has no file-system tools (deterministic single-turn pi),
+# so this script must supply everything the adversary needs in the
+# prompt itself. Steps 0-2 of the SKILL protocol (mechanical baseline,
+# claim verification, test verification) are skipped — they require
+# tool access. Steps 3-9 (Complexity, Scope, Alternatives, Assumptions,
+# Security, Verdict) execute on the inlined content.
+PAYLOAD=$(mktemp -t adv-payload)
+trap 'rm -f "$PAYLOAD"' EXIT
+
+case "$TARGET" in
+  HEAD)
+    if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+      echo "ERROR: HEAD target requires a git repository (CWD: $(pwd))" >&2
+      exit 1
+    fi
+    if [[ -z "$(git diff HEAD)" ]]; then
+      echo "ERROR: working tree clean — nothing to review against HEAD." >&2
+      echo "       Provide a file path, edit something, or use STAGED." >&2
+      exit 1
+    fi
+    {
+      echo "Review the following working-tree diff. Inline content only;"
+      echo "you have no file-system tools. Skip protocol Steps 0-2"
+      echo "(mechanical baseline, claim verification, test verification)."
+      echo "Execute Steps 3-9. Emit prose summary AND the fenced"
+      echo "adversary-review YAML block."
+      echo
+      echo "=== git diff --stat HEAD ==="
+      git diff --stat HEAD
+      echo
+      echo "=== git diff HEAD ==="
+      git diff HEAD
+    } > "$PAYLOAD"
+    ;;
+  STAGED)
+    if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+      echo "ERROR: STAGED target requires a git repository (CWD: $(pwd))" >&2
+      exit 1
+    fi
+    if [[ -z "$(git diff --cached)" ]]; then
+      echo "ERROR: index empty — nothing staged to review." >&2
+      exit 1
+    fi
+    {
+      echo "Review the following STAGED diff (pre-commit semantics)."
+      echo "Inline content only; you have no file-system tools."
+      echo "Skip protocol Steps 0-2. Execute Steps 3-9. Emit prose"
+      echo "summary AND the fenced adversary-review YAML block."
+      echo
+      echo "=== git diff --stat --cached ==="
+      git diff --stat --cached
+      echo
+      echo "=== git diff --cached ==="
+      git diff --cached
+    } > "$PAYLOAD"
+    ;;
+  *)
+    if [[ ! -f "$TARGET" ]]; then
+      echo "ERROR: target not found: $TARGET" >&2
+      echo "       Pass a file path, 'HEAD', or 'STAGED'." >&2
+      exit 1
+    fi
+    {
+      echo "Review the following source file as your sole work unit."
+      echo "Inline content only; you have no file-system tools."
+      echo "Skip protocol Steps 0-2 (mechanical baseline, claim"
+      echo "verification, test verification). Execute Steps 3-9"
+      echo "(Complexity, Scope, Alternatives, Assumptions, Security,"
+      echo "Verdict). Emit prose summary AND the fenced"
+      echo "adversary-review YAML block."
+      echo
+      echo "=== FILE: ${TARGET} ==="
+      cat "$TARGET"
+      echo "=== END FILE ==="
+    } > "$PAYLOAD"
+    ;;
+esac
+
 echo "================================================"
 echo "  ADVERSARY PASS"
 echo "  Target:    $TARGET"
 echo "  Model:     ${PROVIDER}/${MODEL}"
 echo "  Timestamp: $TIMESTAMP"
+echo "  Payload:   $(wc -l < "$PAYLOAD") lines, $(wc -c < "$PAYLOAD") bytes"
 echo "================================================"
 echo ""
 
 # --- Stage 1: Primary adversary review ---
-# Tool flag enforces read-only at harness level (not just by prompt convention)
-# --no-extensions prevents the quorum extension from firing recursively
-REVIEW=$(cat "$SKILL_PATH" | pi \
-  --provider "$PROVIDER" \
-  --model "$MODEL" \
-  --tools read,grep,ls,bash \
-  --no-write \
-  --no-edit \
-  --no-extensions \
-  -p "review @${TARGET}" 2>&1) || true
+# Deterministic single-turn pi: every autoload off, skill loaded
+# explicitly via --append-system-prompt.
+run_pi() {
+  local extra_user="$1"
+  pi \
+    --no-extensions \
+    --no-tools \
+    --no-skills \
+    --no-prompt-templates \
+    --no-context-files \
+    --no-session \
+    --provider "$PROVIDER" \
+    --model "$MODEL" \
+    --append-system-prompt "$SKILL_PATH" \
+    -p "$(cat "$PAYLOAD")${extra_user}" 2>&1
+}
+
+REVIEW=$(run_pi "") || true
 
 echo "$REVIEW"
 echo ""
 
-# Write review artifact (Enqueue-Before-Ack: write before acting on verdict)
+# Write review artifact (Enqueue-Before-Ack: persist before acting).
 {
   echo "# Adversary Review"
   echo ""
@@ -112,15 +217,12 @@ echo ""
 } > "$REVIEW_FILE"
 
 # --- Extract verdict ---
-# Prefer the YAML block's `verdict:` field (authoritative per
-# skills/adversary/SKILL.md). Fall back to the prose `**VERDICT: …**`
-# line when the YAML block is absent (e.g. self-review prompt format).
-# `||` chaining doesn't work here because `head -1` always returns exit 0;
-# explicit empty-checks below.
+# Prefer the YAML block's `verdict:` (authoritative per SKILL.md).
+# Fall back to the prose `**VERDICT: …**` if YAML absent.
 VERDICT=$(echo "$REVIEW" | grep -E '^verdict:[[:space:]]*(PASS|CONCERNS|FAIL)\b' \
             | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1)
 if [[ -z "$VERDICT" ]]; then
-  VERDICT=$(echo "$REVIEW" | grep -E '\*\*VERDICT:' \
+  VERDICT=$(echo "$REVIEW" | grep -E '\*\*VERDICT:|\*\*PASS\*\*|\*\*CONCERNS\*\*|\*\*FAIL\*\*' \
               | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1)
 fi
 [[ -z "$VERDICT" ]] && VERDICT="UNKNOWN"
@@ -135,29 +237,21 @@ if [[ "$QUORUM" -eq 1 ]] && [[ "$VERDICT" == "CONCERNS" || "$VERDICT" == "FAIL" 
   echo ""
 
   PEER_VERDICTS=("$VERDICT")
-  PEER_COUNT=0
+  FINAL_VERDICT="$VERDICT"
 
   for peer in 1 2; do
-    PEER_COUNT=$((PEER_COUNT + 1))
     echo "  Peer ${peer}..."
+    # QUORUM_PEER token tells the skill prompt to short-circuit
+    # (see SKILL.md Step 8). Appended to the inlined payload so the
+    # peer also has the target context.
+    PEER_REVIEW=$(run_pi $'\n\nQUORUM_PEER peer-'"${peer}"$': Return ONLY: VERDICT line and top 1–3 findings with file:line.') || true
 
-    PEER_REVIEW=$(cat "$SKILL_PATH" | pi \
-      --provider "$PROVIDER" \
-      --model "$MODEL" \
-      --tools read,grep,ls,bash \
-      --no-write \
-      --no-edit \
-      --no-extensions \
-      -p "QUORUM_PEER peer-${peer}: Review @${TARGET}. Return ONLY: VERDICT: [PASS|CONCERNS|FAIL] and top 1-3 findings with file:line." \
-      2>&1) || true
-
-    PEER_VERDICT=$(echo "$PEER_REVIEW" | grep -E 'VERDICT:' | head -1 | \
-      grep -oE 'PASS|CONCERNS|FAIL' | head -1 || echo "UNKNOWN")
+    PEER_VERDICT=$(echo "$PEER_REVIEW" | grep -E 'VERDICT:|^verdict:' \
+                     | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1 || echo "UNKNOWN")
 
     PEER_VERDICTS+=("$PEER_VERDICT")
     echo "  Peer ${peer} verdict: $PEER_VERDICT"
 
-    # Append peer result to review file
     {
       echo ""
       echo "---"
@@ -166,40 +260,36 @@ if [[ "$QUORUM" -eq 1 ]] && [[ "$VERDICT" == "CONCERNS" || "$VERDICT" == "FAIL" 
       echo "$PEER_REVIEW"
     } >> "$REVIEW_FILE"
 
-    # Early exit: if peer agrees, quorum confirmed — no need for second peer
+    # Early exit: first peer agrees → quorum confirmed.
     if [[ "$PEER_VERDICT" == "CONCERNS" || "$PEER_VERDICT" == "FAIL" ]]; then
-      FINAL_VERDICT="$VERDICT"
-      echo ""
-      echo "Quorum confirmed: self=${VERDICT}, peer${peer}=${PEER_VERDICT} → ${FINAL_VERDICT}"
+      echo "Quorum confirmed: self=${VERDICT}, peer${peer}=${PEER_VERDICT}"
       break
     fi
 
-    # If first peer disagrees, continue to second peer
     if [[ "$peer" -eq 2 ]]; then
-      # Majority of 3
       PASS_COUNT=$(printf '%s\n' "${PEER_VERDICTS[@]}" | grep -c 'PASS' || true)
       if [[ "$PASS_COUNT" -ge 2 ]]; then
-        FINAL_VERDICT="CONCERNS"  # downgrade: majority says acceptable
-        echo ""
-        echo "Quorum: self=${VERDICT}, peer1=${PEER_VERDICTS[1]}, peer2=${PEER_VERDICT} → downgraded to CONCERNS"
+        FINAL_VERDICT="CONCERNS"
+        echo "Quorum: peers downgrade ${VERDICT} → CONCERNS"
       else
-        FINAL_VERDICT="$VERDICT"
-        echo ""
-        echo "Quorum: self=${VERDICT}, peer1=${PEER_VERDICTS[1]:-?}, peer2=${PEER_VERDICT} → ${FINAL_VERDICT} confirmed"
+        echo "Quorum: ${VERDICT} confirmed"
       fi
     fi
   done
 
-  # Update final verdict if quorum changed it
-  VERDICT="${FINAL_VERDICT:-$VERDICT}"
+  VERDICT="$FINAL_VERDICT"
   echo "" >> "$REVIEW_FILE"
   echo "**Final Verdict (post-quorum)**: ${VERDICT}" >> "$REVIEW_FILE"
 fi
 
-# --- Stage 3: Revision (optional) ---
+# --- Stage 3: Revision (optional, known-limited headless) ---
 if [[ "$REVISE" -eq 1 ]] && [[ "$VERDICT" == "CONCERNS" || "$VERDICT" == "FAIL" ]]; then
   echo ""
   echo "--- Revision pass (verdict was ${VERDICT}) ---"
+  echo "WARNING: revise needs file-system tools, which require pi's" >&2
+  echo "         interactive mode. Headless revise in pi 0.74.0 is" >&2
+  echo "         not reliable; consider running pi interactively to" >&2
+  echo "         apply findings from ${REVIEW_FILE}." >&2
   echo ""
 
   pi \
@@ -208,10 +298,10 @@ if [[ "$REVISE" -eq 1 ]] && [[ "$VERDICT" == "CONCERNS" || "$VERDICT" == "FAIL" 
     -p "Revise @${TARGET} to address all findings in @${REVIEW_FILE}.
 Do not add scope. Do not add abstractions not required by the findings.
 Follow the TDD mandate: write or update tests first, then fix implementation." \
-    2>&1
+    2>&1 || true
 
   echo ""
-  echo "Revision complete. Run adversary-pass.sh again to verify."
+  echo "Revision attempt complete. Re-run adversary-pass.sh to verify."
 fi
 
 echo ""

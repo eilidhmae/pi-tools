@@ -81,9 +81,10 @@ pi-tools/
 ├── extensions/
 │   ├── adversary-hook.ts                # unchanged
 │   ├── quorum.ts                        # +heterogeneous-model + temperature diversity
-│   ├── adapter-route.ts                 # NEW: (role,domain) → model id
-│   ├── adversary-parse.ts               # NEW: YAML fence parser w/ Zod schema
-│   └── adversary-capture.ts             # NEW: emits training examples on consensus
+│   └── lib/                             # NEW: libraries imported by extensions
+│       ├── adapter-route.ts             #   (role,domain) → model id
+│       ├── adversary-parse.ts           #   YAML fence parser w/ Zod schema
+│       └── adversary-capture.ts         #   emits training examples on consensus
 ├── tools/bash/
 │   ├── adversary-check.sh               # unchanged
 │   ├── adversary-pass.sh                # +--adapter / --domain flags
@@ -180,7 +181,7 @@ model. All formats are deterministic from the same training run.
 
 ## Inference (two-track)
 
-Both tracks expose an OpenAI-compatible endpoint at `http://localhost:8080/v1`
+Both tracks expose an OpenAI-compatible endpoint at `http://localhost:18080/v1`
 and use the **same model-id naming convention** (`qwen3-coder-30b-a3b`,
 `qwen3-coder-30b-a3b+go`, `qwen3-coder-30b-a3b+adversary`, …). The pi harness
 cannot tell which track is running, and `models.json` is identical.
@@ -190,7 +191,7 @@ cannot tell which track is running, and `models.json` is identical.
 - `server/mlx-lm-multi/launch.sh` reads a config of `(adapter_name, port,
   adapter_path)` tuples and starts one `mlx_lm.server` per row, each loaded
   with one adapter against the same base.
-- `proxy.py` (FastAPI, ~80 lines) accepts OpenAI requests on `:8080`,
+- `proxy.py` (FastAPI, ~80 lines) accepts OpenAI requests on `:18080`,
   parses the `model` field's `+suffix`, and forwards to the right backend
   port. Falls back to base when no suffix.
 - Memory: ~5 GB per process. Cap configured to 4 hot adapters (~20 GB)
@@ -202,7 +203,7 @@ cannot tell which track is running, and `models.json` is identical.
 ### Opt-in track: `mola` (one base, adapters routed per request)
 
 - `server/mola/launch.sh` clones the MOLA repo, applies the documented
-  `mlx-lm` patch, and launches the multi-LoRA server on `:8080` directly.
+  `mlx-lm` patch, and launches the multi-LoRA server on `:18080` directly.
 - ~5 GB memory total for base + N adapters resident.
 - **Why opt-in**: alpha; needs the operator to validate stability on-Mac
   before relying on it. Switching is `make serve` → `make serve-mola`.
@@ -213,7 +214,7 @@ cannot tell which track is running, and `models.json` is identical.
 
 ## Pi harness changes
 
-### `extensions/adapter-route.ts` (new)
+### `extensions/lib/adapter-route.ts` (new)
 
 Maps `(role, domain) → model_id`. For workers/managers, returns the
 domain-specific adapter id. **For adversary role, returns the bare base
@@ -224,7 +225,7 @@ path (see AGENTS.md → "Adapter-Scoped Authority"). Includes
 `inferDomain(signal)` — extension/content heuristic. Importable by
 other extensions and by the bash tools that orchestrate dispatch.
 
-### `extensions/adversary-parse.ts` (new)
+### `extensions/lib/adversary-parse.ts` (new)
 
 Parses the adversary YAML fenced block (`adversary-review` fence label,
 strict schema, controlled-vocabulary categories) using `yaml` + `zod`.
@@ -232,7 +233,7 @@ Tolerant normalizer for common drift (severity aliases, category aliases,
 single-line `line` → `line_end`). Returns `{ok, review, errors, fatal}` so
 the capture pipeline can distinguish "usable but warned" from "drop".
 
-### `extensions/adversary-capture.ts` (new)
+### `extensions/lib/adversary-capture.ts` (new)
 
 Hooks into quorum results. On ≥2-reviewer agreement, emits a
 training-example record to `~/.pi/agent/training/adversary-captures/tier-{1,2,3}.jsonl`
@@ -268,7 +269,7 @@ captures begin (changing the schema invalidates the dataset).
 
 ### `server/models.json.template`
 
-New `local-mlx` provider pointing at `localhost:8080`. Lists
+New `local-mlx` provider pointing at `localhost:18080`. Lists
 `qwen3-coder-30b-a3b` + the seven `+suffix` model ids. `compat.supportsDeveloperRole: false`.
 Coexists with the existing `ollama` provider — operators choose at
 `--provider` time.
@@ -321,7 +322,7 @@ Steps 4–6 are M5 Max only (need MLX + adequate disk; GGUF convert is
 
 `bootstrap-mac.sh` handles first-time setup: Homebrew deps, `uv`/Python,
 `mlx-lm`, `huggingface_hub`, llama.cpp build for GGUF, base-model download
-to `~/models/qwen3-coder-30b-a3b-4bit`, MLX 26.2+ check (Neural Accelerators).
+to `~/models/Qwen3-Coder-30B-A3B-Instruct-4bit`, MLX 26.2+ check (Neural Accelerators).
 
 ---
 
@@ -345,7 +346,7 @@ Only `worker-go` and `adversary-general` get datasets/configs/training plumbing.
 **In `pi-tools/`:**
 - `MODELS.md` — operator entry point (where models live, how to run with pi, install/use)
 - `model-plan.md` — mirror of this plan, in-repo for collaborators
-- `extensions/adapter-route.ts`, `adversary-parse.ts`, `adversary-capture.ts`
+- `extensions/lib/{adapter-route,adversary-parse,adversary-capture}.ts`
 - `extensions/quorum.ts` (modified)
 - `tools/bash/adversary-pass.sh`, `gen-review-revise.sh` (modified)
 - `skills/{orchestrator,manager,adversary}/SKILL.md` (modified)
@@ -378,7 +379,7 @@ Only `worker-go` and `adversary-general` get datasets/configs/training plumbing.
    M5 Max now uses the *publicly released* adapter, not the in-tree
    training output.
 6. `cd pi-tools/server && ./mlx-lm-multi/launch.sh worker-go` →
-   `:8080` healthy, `curl /v1/models` lists `qwen3-coder-30b-a3b+go`.
+   `:18080` healthy, `curl /v1/models` lists `qwen3-coder-30b-a3b+go`.
 7. From any project on the M5 Max: `pi --provider local-mlx --model
    qwen3-coder-30b-a3b+go "write a table-driven test for this function"`
    → response.

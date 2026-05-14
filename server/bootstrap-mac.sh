@@ -15,7 +15,7 @@ fi
 
 MODELS_DIR="${MODELS_DIR:-$HOME/models}"
 BASE_MODEL_REPO="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
-BASE_MODEL_DIR="$MODELS_DIR/qwen3-coder-30b-a3b-4bit"
+BASE_MODEL_DIR="$MODELS_DIR/Qwen3-Coder-30B-A3B-Instruct-4bit"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-$HOME/src/llama.cpp}"
 
 say()   { printf "\033[1;36m==>\033[0m %s\n" "$*"; }
@@ -143,14 +143,14 @@ Next:
          -D ~/models/adapters/worker-go/
 
   2. Configure server/mlx-lm-multi/adapters.conf with one line per adapter:
-       worker-go         8081  ~/models/adapters/worker-go
+       worker-go         18081  ~/models/adapters/worker-go
 
   3. Launch the default inference track:
        ./mlx-lm-multi/launch.sh
 
   4. Sanity check:
-       curl -sS http://localhost:8080/healthz | jq .
-       curl -sS http://localhost:8080/v1/models | jq .
+       curl -sS http://localhost:18080/healthz | jq .
+       curl -sS http://localhost:18080/v1/models | jq .
 
   5. Use it:
        pi --provider local-mlx --model qwen3-coder-30b-a3b+go "your task"

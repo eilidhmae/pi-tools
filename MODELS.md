@@ -31,7 +31,7 @@ qwen3-coder-30b-a3b+adversary    # + adversary-general
 The harness selects an adapter by passing `--model qwen3-coder-30b-a3b+<suffix>`.
 The orchestrator never selects an adapter for itself; it dispatches
 managers/workers with adapters chosen from the routing table in
-`extensions/adapter-route.ts`.
+`extensions/lib/adapter-route.ts`.
 
 ---
 
@@ -40,7 +40,7 @@ managers/workers with adapters chosen from the routing table in
 ### Base model
 
 `mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit` on Hugging Face. Downloaded
-to `~/models/qwen3-coder-30b-a3b-4bit/` by `server/bootstrap-mac.sh`.
+to `~/models/Qwen3-Coder-30B-A3B-Instruct-4bit/` by `server/bootstrap-mac.sh`.
 
 ### Adapters (one GitHub repo per adapter, all MIT, all public)
 
@@ -109,7 +109,7 @@ gh release download worker-go-v1 \
 
 ```bash
 cd ~/src/pi-tools/server
-./mlx-lm-multi/launch.sh worker-go            # one mlx_lm.server + proxy on :8080
+./mlx-lm-multi/launch.sh worker-go            # one mlx_lm.server + proxy on :18080
 ./mlx-lm-multi/healthcheck.sh                 # confirms /v1/models lists the id
 ```
 
@@ -135,7 +135,7 @@ auto-detect or auto-switch.
 ./mola/healthcheck.sh
 ```
 
-Same `:8080`, same model ids, same pi behavior. See
+Same `:18080`, same model ids, same pi behavior. See
 [`server/HEALTH.md`](server/HEALTH.md) for switch criteria.
 
 ---
@@ -176,7 +176,7 @@ dataset and prompt template differ.
 For the `adversary-general` adapter, training data accumulates
 **automatically** while you use pi normally — see "Adversary capture
 pipeline" in `model-plan.md` and
-[`extensions/adversary-capture.ts`](extensions/adversary-capture.ts).
+[`extensions/lib/adversary-capture.ts`](extensions/lib/adversary-capture.ts).
 
 ---
 

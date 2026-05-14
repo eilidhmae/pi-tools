@@ -110,6 +110,8 @@ install_file \
 
 echo ""
 echo "=== Extensions ==="
+# Real extensions (have `export default function (pi)`): live at
+# extensions/*.ts and are auto-discovered by pi's extension loader.
 install_file \
   "$SCRIPT_DIR/extensions/adversary-hook.ts" \
   "$PI_AGENT_DIR/extensions/adversary-hook.ts"
@@ -118,17 +120,27 @@ install_file \
   "$SCRIPT_DIR/extensions/quorum.ts" \
   "$PI_AGENT_DIR/extensions/quorum.ts"
 
+# Library modules imported by the real extensions: live under
+# extensions/lib/ so pi's flat-glob extension discovery does NOT try to
+# load them as plugins (which would error with "no valid factory
+# function"). pi's discovery is empirically non-recursive, verified on
+# pi 0.74.0.
 install_file \
-  "$SCRIPT_DIR/extensions/adapter-route.ts" \
-  "$PI_AGENT_DIR/extensions/adapter-route.ts"
+  "$SCRIPT_DIR/extensions/lib/adapter-route.ts" \
+  "$PI_AGENT_DIR/extensions/lib/adapter-route.ts"
 
 install_file \
-  "$SCRIPT_DIR/extensions/adversary-parse.ts" \
-  "$PI_AGENT_DIR/extensions/adversary-parse.ts"
+  "$SCRIPT_DIR/extensions/lib/adversary-parse.ts" \
+  "$PI_AGENT_DIR/extensions/lib/adversary-parse.ts"
 
 install_file \
-  "$SCRIPT_DIR/extensions/adversary-capture.ts" \
-  "$PI_AGENT_DIR/extensions/adversary-capture.ts"
+  "$SCRIPT_DIR/extensions/lib/adversary-capture.ts" \
+  "$PI_AGENT_DIR/extensions/lib/adversary-capture.ts"
+
+# Clean up pre-reorg paths if present (upgrade path).
+for stale in adapter-route.ts adversary-parse.ts adversary-capture.ts; do
+  rm -f "$PI_AGENT_DIR/extensions/$stale"
+done
 
 echo ""
 echo "=== Tools ==="

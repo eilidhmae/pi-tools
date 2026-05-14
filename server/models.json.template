@@ -14,7 +14,7 @@
       ]
     },
     "local-mlx": {
-      "baseUrl": "http://localhost:8080/v1",
+      "baseUrl": "http://localhost:18080/v1",
       "api": "openai-completions",
       "apiKey": "local",
       "compat": {

@@ -24,7 +24,7 @@ running.
 ```
 
 `launch.sh` clones MOLA into `~/src/mola/` if absent, applies the patch,
-and starts the server bound to `:8080` with the same model id naming
+and starts the server bound to `:18080` with the same model id naming
 (`qwen3-coder-30b-a3b+<suffix>`). Adapters listed in `../mlx-lm-multi/adapters.conf`
 are reused — single source of truth for which adapters are hot.
 

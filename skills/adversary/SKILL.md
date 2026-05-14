@@ -160,7 +160,7 @@ that don't match reality. List each failure with file:line reference.
 
 Two parts. The prose summary is for humans. The fenced YAML block is
 machine-parsed and feeds the adversary-general training pipeline (see
-`extensions/adversary-parse.ts` and `extensions/adversary-capture.ts`).
+`extensions/lib/adversary-parse.ts` and `extensions/lib/adversary-capture.ts`).
 Both must be present.
 
 ### Prose summary (for humans)
@@ -201,7 +201,7 @@ Both must be present.
 After the prose, emit a fenced block labelled exactly `adversary-review`
 containing your verdict and findings as YAML. The schema below is **v1
 and frozen** — the adversary-general training dataset depends on it.
-Parser source of truth: `extensions/adversary-parse.ts`.
+Parser source of truth: `extensions/lib/adversary-parse.ts`.
 
 #### Required fields
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # launch.sh — start the base mlx_lm.server, one mlx_lm.server per adapter
-# listed in adapters.conf, and the routing proxy on :8080.
+# listed in adapters.conf, and the routing proxy on :18080.
 #
 # Idempotent: existing pids in pids/ are killed before relaunch.
 
@@ -10,9 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIDS_DIR="$SCRIPT_DIR/pids"
 LOG_DIR="$SCRIPT_DIR/logs"
 CONF="$SCRIPT_DIR/adapters.conf"
-BASE_MODEL_DIR="${BASE_MODEL_DIR:-$HOME/models/qwen3-coder-30b-a3b-4bit}"
-BASE_PORT="${BASE_PORT:-8090}"
-PROXY_PORT="${PROXY_PORT:-8080}"
+BASE_MODEL_DIR="${BASE_MODEL_DIR:-$HOME/models/Qwen3-Coder-30B-A3B-Instruct-4bit}"
+BASE_PORT="${BASE_PORT:-18090}"
+PROXY_PORT="${PROXY_PORT:-18080}"
 PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv}"
 PROMPT_CACHE_SIZE="${PI_PROMPT_CACHE_SIZE:-16}"
 PROMPT_CACHE_BYTES="${PI_PROMPT_CACHE_BYTES:-2147483648}"

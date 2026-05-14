@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launch.sh — start the MOLA multi-LoRA server on :8080.
+# launch.sh — start the MOLA multi-LoRA server on :18080.
 # Reads the same adapters.conf as the default track for adapter listing.
 #
 # Venv isolation: MOLA's install patches mlx-lm in-place. We use a separate
@@ -16,8 +16,8 @@ PIDS_DIR="$SCRIPT_DIR/pids"
 LOG_DIR="$SCRIPT_DIR/logs"
 MOLA_DIR="${MOLA_DIR:-$HOME/src/mola}"
 MOLA_REPO="${MOLA_REPO:-https://github.com/Goekdeniz-Guelmez/mlx-lm-mola}"
-BASE_MODEL_DIR="${BASE_MODEL_DIR:-$HOME/models/qwen3-coder-30b-a3b-4bit}"
-PORT="${PROXY_PORT:-8080}"
+BASE_MODEL_DIR="${BASE_MODEL_DIR:-$HOME/models/Qwen3-Coder-30B-A3B-Instruct-4bit}"
+PORT="${PROXY_PORT:-18080}"
 # Isolated venv — the MOLA install patches mlx-lm in-place; do NOT share with
 # the mlx-lm-multi venv.
 PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv-mola}"

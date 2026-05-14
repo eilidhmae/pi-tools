@@ -40,7 +40,7 @@ def parse_routes(raw: str) -> dict[str, int]:
 
 
 ROUTES = parse_routes(os.environ.get("PI_PROXY_ROUTES", ""))
-PORT = int(os.environ.get("PI_PROXY_PORT", "8080"))
+PORT = int(os.environ.get("PI_PROXY_PORT", "18080"))
 BASE_MODEL_DIR = os.environ.get("PI_BASE_MODEL_DIR")
 if not BASE_MODEL_DIR:
     raise SystemExit(

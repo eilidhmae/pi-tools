@@ -37,9 +37,10 @@ pi-tools/
 ├── extensions/
 │   ├── adversary-hook.ts             # post-write mechanical check
 │   ├── quorum.ts                     # adversary quorum via RPC
-│   ├── adapter-route.ts              # (role, domain) → model id
-│   ├── adversary-parse.ts            # YAML fence parser for adversary output
-│   └── adversary-capture.ts          # tier-classified training-example capture
+│   └── lib/                          # library modules — not pi extensions
+│       ├── adapter-route.ts          # (role, domain) → model id
+│       ├── adversary-parse.ts        # YAML fence parser for adversary output
+│       └── adversary-capture.ts      # tier-classified training-example capture
 ├── tools/bash/
 │   ├── adversary-check.sh            # mechanical baseline (no LLM, exits 0)
 │   ├── adversary-pass.sh             # headless adversary pipeline
@@ -98,7 +99,7 @@ mode only):
   tool-calling, no Apple-Silicon requirement.
 - **New (M5 Max + Apple Silicon)**: `qwen3-coder-30b-a3b` (4-bit MLX)
   with hot-swappable LoRA adapters (`+go`, `+rust`, `+python`, `+tf`,
-  `+adversary`) served via `mlx_lm.server` or MOLA on `localhost:8080`.
+  `+adversary`) served via `mlx_lm.server` or MOLA on `localhost:18080`.
 
 The harness is adapter-agnostic: model selection flows through `--model`
 and `models.json`. Today's Ollama users see no behavior change.

@@ -126,7 +126,7 @@ Spawn pattern:
 pi --provider local-mlx --model <model_id> /skill:manager
 ```
 
-Programmatic helpers in `extensions/adapter-route.ts`:
+Programmatic helpers in `extensions/lib/adapter-route.ts`:
 `modelFor(role, domain)` and `inferDomain(signal)`.
 
 If the operator's `models.json` does not configure `local-mlx` (Ollama-only

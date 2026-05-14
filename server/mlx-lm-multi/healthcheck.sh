@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PORT="${PROXY_PORT:-8080}"
+PORT="${PROXY_PORT:-18080}"
 URL="http://localhost:$PORT/healthz"
 
 if ! resp="$(curl -sS --max-time 5 "$URL")"; then

@@ -200,7 +200,7 @@ e.g. learning-rate instability or numerical failure.
 ## Recipe (canonical baseline)
 
 ```yaml
-model: "<path to qwen3-coder-30b-a3b-4bit>"
+model: "<path to Qwen3-Coder-30B-A3B-Instruct-4bit>"
 train: true
 data: "<path to data/ with train.jsonl, valid.jsonl>"
 adapter_path: "<output directory>"
@@ -268,7 +268,7 @@ installed:
 ```bash
 # 1. Base model (one-time download, ~17 GB)
 hf download mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit \
-  --local-dir ~/models/qwen3-coder-30b-a3b-4bit
+  --local-dir ~/models/Qwen3-Coder-30B-A3B-Instruct-4bit
 
 # 2. Dataset (sentinel-suffix Q/A pairs in OpenAI chat format)
 # Example record:
@@ -280,12 +280,12 @@ hf download mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit \
 # 3. Train (attention-only baseline). Recipe file at recipes/baseline-lora.yaml;
 #    overlay paths per-run rather than editing the YAML.
 mlx_lm.lora --config recipes/baseline-lora.yaml \
-            --model "$HOME/models/qwen3-coder-30b-a3b-4bit" \
+            --model "$HOME/models/Qwen3-Coder-30B-A3B-Instruct-4bit" \
             --data ./data \
             --adapter-path ./out
 
 # 4. Verify behaviour shift
-mlx_lm.generate --model ~/models/qwen3-coder-30b-a3b-4bit \
+mlx_lm.generate --model ~/models/Qwen3-Coder-30B-A3B-Instruct-4bit \
                 --adapter-path <output>/adapter \
                 --prompt "What does GPU stand for?" \
                 --temp 0.0 --max-tokens 80
