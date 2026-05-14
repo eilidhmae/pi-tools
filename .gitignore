@@ -6,3 +6,5 @@ server/mlx-lm-multi/logs/
 server/mola/pids/
 server/mola/logs/
 .DS_Store
+reviews/
+

@@ -112,6 +112,103 @@ export interface CaptureResult {
   reason?: string;
 }
 
+/**
+ * captureSingleReviewer
+ *
+ * Bootstrap-dataset capture path for headless / pre-adapter runs where
+ * there is exactly one reviewer (i.e. `adversary-pass.sh` calling pi
+ * once against the base model with no `+adversary` adapter). Records
+ * land in `bootstrap.jsonl` — explicitly distinct from the tier-1/2/3
+ * quorum-driven files, because a single-reviewer judgement carries no
+ * agreement signal.
+ *
+ * The schema mirrors the quorum record shape so the eventual training
+ * pipeline can merge them with a single transform; the discriminator
+ * is `tier: "bootstrap"` (string literal, not numeric) and
+ * `consensus.reviewerCount: 1`.
+ *
+ * Unparseable reviews land in `disagreements.jsonl`, same as the
+ * quorum path's mid-quorum disagreements — those are the human-review
+ * pile.
+ */
+export interface SingleReviewerResult {
+  tier: "bootstrap" | null;
+  verdict?: Verdict;
+  findingCount?: number;
+  recordedTo?: string;
+  reason?: string;
+}
+
+export function captureSingleReviewer(
+  reviewer: ReviewerOutput,
+  ctx: CaptureContext
+): SingleReviewerResult {
+  const dir = captureDir();
+  const parsed = parseAdversaryReview(reviewer.rawOutput);
+
+  if (!parsed.ok || !parsed.review) {
+    const outFile = join(dir, "disagreements.jsonl");
+    const record = {
+      capturedAt: new Date().toISOString(),
+      tier: null,
+      scope: ctx.scope,
+      reason: parsed.fatal ?? "parse failed",
+      reviewer: {
+        modelId: reviewer.modelId,
+        temperature: reviewer.temperature,
+        rawOutput: reviewer.rawOutput.slice(0, 8000),
+      },
+    };
+    appendFileSync(outFile, JSON.stringify(record) + "\n");
+    return { tier: null, recordedTo: outFile, reason: parsed.fatal ?? "parse failed" };
+  }
+
+  const review = parsed.review;
+  const outFile = join(dir, "bootstrap.jsonl");
+  const artifactContent = ctx.artifactContent ?? "";
+  const artifactHash = artifactContent
+    ? sha(artifactContent + "::" + review.verdict).slice(0, 16)
+    : sha(ctx.scope + "::" + review.verdict + "::" + Date.now()).slice(0, 16);
+
+  const record = {
+    hash: artifactHash,
+    capturedAt: new Date().toISOString(),
+    tier: "bootstrap" as const,
+    scope: ctx.scope,
+    artifact: {
+      path: ctx.artifactPath ?? review.artifact.path ?? null,
+      content: artifactContent || null,
+      gitSha: ctx.gitSha ?? null,
+      projectName: ctx.projectName ?? null,
+    },
+    consensus: {
+      verdict: review.verdict,
+      findings: review.findings,
+      reviewerCount: 1,
+      agreementType: "single-reviewer",
+    },
+    reviewers: [
+      {
+        modelId: reviewer.modelId,
+        temperature: reviewer.temperature,
+        verdict: review.verdict,
+        confidence: review.confidence,
+        findingCount: review.findings.length,
+        rawOutput: reviewer.rawOutput.slice(0, 8000),
+      },
+    ],
+  };
+
+  appendFileSync(outFile, JSON.stringify(record) + "\n");
+
+  return {
+    tier: "bootstrap",
+    verdict: review.verdict,
+    findingCount: review.findings.length,
+    recordedTo: outFile,
+  };
+}
+
 export function captureFromQuorum(
   reviewers: ReviewerOutput[],
   ctx: CaptureContext

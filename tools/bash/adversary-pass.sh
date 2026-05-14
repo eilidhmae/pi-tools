@@ -3,7 +3,7 @@
 # adversary-pass.sh -- Run an adversary review on a file or diff.
 #
 # Usage:
-#   adversary-pass.sh <target>           # review a file, "HEAD", or "STAGED"
+#   adversary-pass.sh <target>           # review a file, HEAD, STAGED, or RANGE:A..B
 #   adversary-pass.sh <target> --quorum  # also run 2 peer reviewers
 #
 # Targets:
@@ -11,6 +11,7 @@
 #               the prompt; no file-system tools are needed by the model.
 #   HEAD        Review `git diff HEAD` (working-tree changes).
 #   STAGED      Review `git diff --cached` (pre-commit semantics).
+#   RANGE:A..B  Review `git diff A..B` (e.g. pre-push hooks: origin..HEAD).
 #
 # Options:
 #   --revise     If verdict is CONCERNS/FAIL, run a revision pass.
@@ -122,6 +123,11 @@ case "$TARGET" in
       echo "Execute Steps 3-9. Emit prose summary AND the fenced"
       echo "adversary-review YAML block."
       echo
+      echo "Set these artifact fields verbatim in the YAML block:"
+      echo "  path: HEAD"
+      echo "  lines_reviewed: all"
+      echo "Leave artifact.sha256 unset (no single artifact to hash)."
+      echo
       echo "=== git diff --stat HEAD ==="
       git diff --stat HEAD
       echo
@@ -144,11 +150,53 @@ case "$TARGET" in
       echo "Skip protocol Steps 0-2. Execute Steps 3-9. Emit prose"
       echo "summary AND the fenced adversary-review YAML block."
       echo
+      echo "Set these artifact fields verbatim in the YAML block:"
+      echo "  path: STAGED"
+      echo "  lines_reviewed: all"
+      echo "Leave artifact.sha256 unset (no single artifact to hash)."
+      echo
       echo "=== git diff --stat --cached ==="
       git diff --stat --cached
       echo
       echo "=== git diff --cached ==="
       git diff --cached
+    } > "$PAYLOAD"
+    ;;
+  RANGE:*)
+    if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+      echo "ERROR: RANGE target requires a git repository (CWD: $(pwd))" >&2
+      exit 1
+    fi
+    RANGE_SPEC="${TARGET#RANGE:}"
+    if [[ -z "$RANGE_SPEC" || "$RANGE_SPEC" != *..* ]]; then
+      echo "ERROR: RANGE target must be 'RANGE:A..B' (got '$TARGET')" >&2
+      exit 1
+    fi
+    if ! git rev-parse --verify --quiet "${RANGE_SPEC%%..*}" >/dev/null || \
+       ! git rev-parse --verify --quiet "${RANGE_SPEC##*..}" >/dev/null; then
+      echo "ERROR: one or both refs in '$RANGE_SPEC' do not resolve" >&2
+      exit 1
+    fi
+    if [[ -z "$(git diff "$RANGE_SPEC")" ]]; then
+      echo "ERROR: no diff in range $RANGE_SPEC — nothing to review." >&2
+      exit 1
+    fi
+    {
+      echo "Review the following commit-range diff ($RANGE_SPEC)."
+      echo "Inline content only; you have no file-system tools."
+      echo "Skip protocol Steps 0-2. Execute Steps 3-9. Emit prose"
+      echo "summary AND the fenced adversary-review YAML block."
+      echo
+      echo "Set these artifact fields verbatim in the YAML block:"
+      echo "  path: $RANGE_SPEC"
+      echo "  lines_reviewed: all"
+      echo "Leave artifact.sha256 unset (no single artifact to hash)."
+      echo
+      echo "=== git diff --stat $RANGE_SPEC ==="
+      git diff --stat "$RANGE_SPEC"
+      echo
+      echo "=== git diff $RANGE_SPEC ==="
+      git diff "$RANGE_SPEC"
     } > "$PAYLOAD"
     ;;
   *)
@@ -157,6 +205,11 @@ case "$TARGET" in
       echo "       Pass a file path, 'HEAD', or 'STAGED'." >&2
       exit 1
     fi
+    # Compute the real SHA-256 so the model can copy it verbatim into
+    # artifact.sha256 instead of hallucinating. First 16 chars is the
+    # SKILL.md convention.
+    TARGET_SHA=$(shasum -a 256 "$TARGET" | awk '{print substr($1, 1, 16)}')
+    TARGET_LINES=$(wc -l < "$TARGET" | tr -d ' ')
     {
       echo "Review the following source file as your sole work unit."
       echo "Inline content only; you have no file-system tools."
@@ -165,6 +218,11 @@ case "$TARGET" in
       echo "(Complexity, Scope, Alternatives, Assumptions, Security,"
       echo "Verdict). Emit prose summary AND the fenced"
       echo "adversary-review YAML block."
+      echo
+      echo "Set these artifact fields verbatim in the YAML block:"
+      echo "  path: ${TARGET}"
+      echo "  sha256: ${TARGET_SHA}"
+      echo "  lines_reviewed: 1-${TARGET_LINES}"
       echo
       echo "=== FILE: ${TARGET} ==="
       cat "$TARGET"
@@ -229,6 +287,32 @@ fi
 
 echo "Verdict: $VERDICT"
 echo "Review written to: $REVIEW_FILE"
+
+# --- Stage 1b: Bootstrap capture (informational, never blocks) ---
+# Feeds ~/.pi/agent/training/adversary-captures/bootstrap.jsonl for
+# pre-adapter corpus seeding. Falls back silently if the helper is
+# absent (e.g. installs without tsx available).
+CAPTURE_SH=""
+for c in "$(dirname "${BASH_SOURCE[0]}")/capture-review.sh" \
+         "$HOME/.pi/agent/tools/capture-review.sh"; do
+  if [[ -x "$c" ]]; then CAPTURE_SH="$c"; break; fi
+done
+if [[ -n "$CAPTURE_SH" ]]; then
+  CAPTURE_ARGS=(
+    --review "$REVIEW_FILE"
+    --scope  "$TARGET"
+    --model  "$MODEL"
+    --temperature 0
+  )
+  if [[ -f "$TARGET" ]]; then
+    CAPTURE_ARGS+=(--artifact-path "$TARGET")
+  fi
+  if git rev-parse HEAD &>/dev/null; then
+    CAPTURE_ARGS+=(--git-sha "$(git rev-parse HEAD)")
+  fi
+  "$CAPTURE_SH" "${CAPTURE_ARGS[@]}" 2>&1 || \
+    echo "capture: helper failed (non-fatal)"
+fi
 echo ""
 
 # --- Stage 2: Quorum (if CONCERNS or FAIL) ---

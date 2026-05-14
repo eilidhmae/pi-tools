@@ -21,7 +21,12 @@
  * "usable but normalized" from "drop entirely".
  */
 
-const FENCE_RE = /```adversary-review\s*\n([\s\S]*?)\n```/;
+// Tolerant of two observed model outputs:
+//   ```adversary-review\n<yaml>\n```          (canonical, per SKILL.md)
+//   ```\nadversary-review\n<yaml>\n```        (label split onto next line)
+// The \s* between the opening ``` and the label matches the newline in
+// the split form and any incidental whitespace in the canonical form.
+const FENCE_RE = /```\s*adversary-review\s*\n([\s\S]*?)\n```/;
 
 export const ALLOWED_VERDICTS = ["PASS", "CONCERNS", "FAIL"] as const;
 export const ALLOWED_CONFIDENCE = ["high", "medium", "low"] as const;
