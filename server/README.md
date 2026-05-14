@@ -2,7 +2,7 @@
 
 Local inference launch tooling for the Qwen3-Coder + LoRA adapter setup.
 Two tracks expose the **same** OpenAI-compatible endpoint at
-`http://localhost:8080/v1` and use the **same** model id naming
+`http://localhost:18080/v1` and use the **same** model id naming
 (`qwen3-coder-30b-a3b`, `qwen3-coder-30b-a3b+<adapter>`), so the pi harness and
 `models.json` are identical between them.
 
@@ -45,7 +45,7 @@ server/
 │   ├── adapters.conf          # adapter_name port adapter_path  (one per line)
 │   ├── launch.sh              # starts all configured backends + proxy
 │   ├── stop.sh                # kills tracked PIDs
-│   ├── proxy.py               # FastAPI router :8080 → backend ports
+│   ├── proxy.py               # FastAPI router :18080 → backend ports
 │   ├── proxy.service.plist    # launchd autostart for the proxy
 │   └── healthcheck.sh
 └── mola/

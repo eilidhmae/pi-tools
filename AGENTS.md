@@ -86,7 +86,7 @@ Two layers compose:
 | Layer        | What it controls                                       | Source of truth                          |
 | ------------ | ------------------------------------------------------ | ---------------------------------------- |
 | Role         | tool restrictions, prompt scaffolding                  | `skills/<role>/SKILL.md`                 |
-| Adapter      | language/domain specialization of the underlying LLM   | `extensions/adapter-route.ts` + `MODELS.md` |
+| Adapter      | language/domain specialization of the underlying LLM   | `extensions/lib/adapter-route.ts` + `MODELS.md` |
 
 The orchestrator never selects an adapter for itself — it runs on the bare
 `qwen3-coder-30b-a3b` (or `qwen3-coder:30b` on the legacy Ollama path) so that

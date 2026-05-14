@@ -6,7 +6,7 @@
 #
 # Overlay paths at the command line, e.g.:
 #   mlx_lm.lora --config recipes/baseline-lora.yaml \
-#               --model "$HOME/models/qwen3-coder-30b-a3b-4bit" \
+#               --model "$HOME/models/Qwen3-Coder-30B-A3B-Instruct-4bit" \
 #               --data ./data \
 #               --adapter-path ./out
 #

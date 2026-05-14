@@ -3,7 +3,7 @@
 ## Which track am I running?
 
 ```bash
-curl -sS http://localhost:8080/healthz | jq .track
+curl -sS http://localhost:18080/healthz | jq .track
 # → "mlx-lm-multi"  or  "mola"
 ```
 
@@ -52,7 +52,7 @@ ps -axo pid,rss,command | grep -E 'mlx_lm.server|mola' | sort -k2 -n
 sudo powermetrics --samplers gpu_power -n 3 -i 1000
 
 # Endpoint
-watch -n 5 'curl -sS http://localhost:8080/healthz | jq .'
+watch -n 5 'curl -sS http://localhost:18080/healthz | jq .'
 ```
 
 Reasonable budgets on a 128 GB M5 Max with the default track:
