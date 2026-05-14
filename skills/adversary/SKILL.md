@@ -209,7 +209,10 @@ Parser source of truth: `extensions/lib/adversary-parse.ts`.
 - `confidence`: one of `high`, `medium`, `low`
 - `artifact.path`: the file (or scope) reviewed
 - `artifact.sha256`: SHA-256 hex of the file content (first 16 chars OK; for
-  multi-file scope, hash the concatenated content; omit if not feasible)
+  multi-file scope, hash the concatenated content; omit if not feasible).
+  When the prompt provides the value (e.g. from `adversary-pass.sh` for
+  single-file targets), copy it verbatim rather than computing or
+  inventing one.
 - `artifact.lines_reviewed`: range like `1-247`, or `all`
 - `findings`: list (empty if PASS)
 

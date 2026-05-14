@@ -25,6 +25,7 @@
 #   extensions/quorum.ts                       Adversary quorum orchestrator
 #   tools/bash/adversary-check.sh              Mechanical baseline (no LLM)
 #   tools/bash/adversary-pass.sh               Adversary pipeline script
+#   tools/bash/adversary-scan.sh               Scope-inferring scan wrapper
 #   tools/bash/gen-review-revise.sh            Generate → review → revise
 
 set -euo pipefail
@@ -153,6 +154,22 @@ install_file \
   "$SCRIPT_DIR/tools/bash/adversary-pass.sh" \
   "${TOOLS_DIR}/adversary-pass.sh"
 chmod +x "${TOOLS_DIR}/adversary-pass.sh"
+
+install_file \
+  "$SCRIPT_DIR/tools/bash/adversary-scan.sh" \
+  "${TOOLS_DIR}/adversary-scan.sh"
+chmod +x "${TOOLS_DIR}/adversary-scan.sh"
+
+install_file \
+  "$SCRIPT_DIR/tools/bash/capture-review.sh" \
+  "${TOOLS_DIR}/capture-review.sh"
+chmod +x "${TOOLS_DIR}/capture-review.sh"
+
+# capture-review.sh delegates to a tsx-runnable TS file. Install it at
+# $TOOLS_DIR/ts/ so the wrapper's first-candidate path resolves.
+install_file \
+  "$SCRIPT_DIR/tools/ts/capture-review.ts" \
+  "${TOOLS_DIR}/ts/capture-review.ts"
 
 install_file \
   "$SCRIPT_DIR/tools/bash/gen-review-revise.sh" \

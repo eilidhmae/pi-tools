@@ -7,7 +7,7 @@
  * No test framework: plain console.assert / throws. Exit non-zero on failure.
  */
 
-import { parseAdversaryReview } from "../adversary-parse";
+import { parseAdversaryReview } from "../lib/adversary-parse";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -192,6 +192,20 @@ check("known-limitation: unquoted colon string is mis-parsed → ok=false",
       !r5.ok,
       "if this assertion ever STARTS passing, the parser was widened to handle " +
       "unquoted colons; update SKILL.md and this test together. Currently r5.ok=" + r5.ok);
+
+// ---------------------------------------------------------------------------
+// Test 6: split fence label. qwen3-coder-30b-a3b occasionally emits the
+// fence as ```\nadversary-review\n... instead of ```adversary-review\n...
+// Observed on this M5 Max during Phase 0 smoke (2026-05-14). The parser
+// must accept both forms.
+const splitFence = "```\nadversary-review\nverdict: PASS\nconfidence: high\n" +
+  "artifact:\n  path: x.go\n  sha256: deadbeefcafef00d\n  lines_reviewed: 1-10\n" +
+  "findings: []\n```";
+const r6 = parseAdversaryReview(splitFence);
+check("split fence label: ok=true", r6.ok === true,
+      `errors=${JSON.stringify(r6.errors)} fatal=${r6.fatal}`);
+check("split fence label: verdict PASS",
+      r6.review !== undefined && r6.review.verdict === "PASS");
 
 // ---------------------------------------------------------------------------
 if (failures > 0) {
