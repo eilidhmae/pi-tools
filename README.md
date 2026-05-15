@@ -45,13 +45,19 @@ pi-tools/
 │   ├── adversary-check.sh            # mechanical baseline (no LLM, exits 0)
 │   ├── adversary-pass.sh             # headless adversary pipeline
 │   └── gen-review-revise.sh          # generate → review → revise cycle
-└── server/                           # local MLX/MOLA inference launch tooling
-    ├── README.md                     # server overview + first-time setup
-    ├── HEALTH.md                     # operator runbook, fallback criteria
-    ├── bootstrap-mac.sh              # one-shot M5 Max setup
-    ├── models.json.template
-    ├── mlx-lm-multi/                 # default track (one process per adapter)
-    └── mola/                         # opt-in track (one base, many adapters)
+├── server/                           # local MLX/MOLA inference launch tooling
+│   ├── README.md                     # server overview + first-time setup
+│   ├── HEALTH.md                     # operator runbook, fallback criteria
+│   ├── bootstrap-mac.sh              # one-shot M5 Max setup
+│   ├── models.json.template
+│   ├── mlx-lm-multi/                 # default track (one process per adapter)
+│   └── mola/                         # opt-in track (one base, many adapters)
+└── examples/
+    └── mlx-server.sh                 # reference operator script for the
+                                      # Qwen production stack + a side-by-
+                                      # side contrast model (heterogeneous
+                                      # quorum). Adapt paths/model id for
+                                      # your workstation.
 ```
 
 ## Install
@@ -88,6 +94,24 @@ go to `tools/bash/` under the repo root (not inside `.pi/agent/`).
 ```bash
 bash install.sh --force
 ```
+
+## Running a contrast model for heterogeneous quorum
+
+`examples/mlx-server.sh` is a reference operator script that brings up
+the standard Qwen `mlx-lm-multi` stack on `:18080`/`:18090` **and** a
+second mlx_lm.server on `:18100` for a coding-specialist model of a
+different family (Mistral's Codestral-22B in the reference config),
+exposed as a sibling provider `local-mlx-codestral` in `models.json`.
+With both servers up, `adversary-pass.sh` can be invoked twice on the
+same artifact — once via the default Qwen provider, once via
+`--provider local-mlx-codestral` — to get a two-model heterogeneous
+review until shell `--quorum` learns to honour `PI_QUORUM_MODELS`.
+
+The script is an example, not yet wired into `install.sh`; copy it out
+of `examples/` and adapt the paths and contrast-model glob to your
+workstation. See the script header for usage and the rationale for
+running the contrast model side-by-side rather than behind the Qwen
+proxy.
 
 ## Git hooks (this repo)
 
