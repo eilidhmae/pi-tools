@@ -19,8 +19,12 @@
 #                interactive pi mode that this script intentionally avoids.
 #                The revise pass is a best-effort passthrough and may not
 #                work headless in pi 0.74.0; see OPERATIONS.md.
-#   --model      Model id (default: qwen3-coder:30b on ollama).
-#   --provider   Provider id from models.json (default: ollama).
+#   --model      Model id. Default is auto-detected: on Apple Silicon
+#                with a local-mlx server reachable on localhost:18080,
+#                "qwen3-coder-30b-a3b" via local-mlx; otherwise
+#                "qwen3-coder:30b" via ollama (legacy path).
+#   --provider   Provider id from models.json. Default auto-detected
+#                alongside --model (see above).
 #   --adapter    Shorthand: --provider local-mlx --model qwen3-coder-30b-a3b+adversary.
 #   --domain     Shorthand: pick worker adapter by domain
 #                (go|rust|python|terraform|general) on local-mlx.
@@ -47,8 +51,21 @@ set -euo pipefail
 TARGET="${1:?Usage: adversary-pass.sh <target|HEAD|STAGED> [--quorum] [--revise]}"
 REVISE=0
 QUORUM=0
-MODEL="qwen3-coder:30b"
-PROVIDER="ollama"
+
+# --- Auto-detect default provider/model ---
+# On Apple Silicon with a local-mlx server reachable on localhost:18080,
+# prefer local-mlx + qwen3-coder-30b-a3b (the M5 Max / GRAIL target path).
+# Otherwise fall back to qwen3-coder:30b via ollama (the legacy default,
+# preserving today's behaviour for non-Apple operators).
+# --provider / --model / --adapter / --domain flags override this.
+if [[ "$(uname -m)" == "arm64" ]] && \
+   curl -fs --max-time 1 http://localhost:18080/v1/models >/dev/null 2>&1; then
+  MODEL="qwen3-coder-30b-a3b"
+  PROVIDER="local-mlx"
+else
+  MODEL="qwen3-coder:30b"
+  PROVIDER="ollama"
+fi
 
 shift
 while [[ $# -gt 0 ]]; do
