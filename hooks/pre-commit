@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+#
+# pre-commit -- Fast mechanical gates + informational adversary-check.
+#
+# Hard gates (exit non-zero):
+#   - merge conflict markers (via git diff --check --cached)
+#   - bash -n on staged *.sh blobs
+#
+# Informational (exit 0, printed for follow-up):
+#   - adversary-check.sh against the working tree
+#       (skip: PI_SKIP_ADVERSARY_CHECK=1, or if the binary is missing)
+#   - large additions (>150 lines per file)
+#   - new TODO/FIXME/HACK/XXX lines in the staged diff
+#
+# Bypass the whole hook with `git commit --no-verify` (discouraged).
+#
+# Working-tree safety: unstaged changes are stashed with --keep-index and
+# restored on EXIT trap so gates see exactly what will be committed. The
+# adversary-check runs after the pop so it scans the full working tree.
+
+set -uo pipefail
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+ADVERSARY_CHECK="$HOME/.pi/agent/tools/adversary-check.sh"
+
+FAIL_COUNT=0
+WARN_COUNT=0
+
+fail() {
+    echo "ERROR: $*"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+}
+
+warn() {
+    echo "[warn] $*"
+    WARN_COUNT=$((WARN_COUNT + 1))
+}
+
+# ---------------------------------------------------------------------------
+# Collect staged files
+# ---------------------------------------------------------------------------
+
+STAGED_ALL=$(git diff --cached --name-only --diff-filter=ACMR)
+STAGED_SH=$(echo "$STAGED_ALL" | grep -E '\.sh$' || true)
+
+echo "========================================="
+echo " pi-tools pre-commit"
+echo "========================================="
+echo "Repo:    $REPO_ROOT"
+echo "Time:    $(date '+%Y-%m-%d %H:%M:%S')"
+echo ""
+
+if [ -z "$STAGED_ALL" ]; then
+    echo "No staged changes. Nothing to check."
+    exit 0
+fi
+
+echo "--- STAGED FILES ---"
+git diff --cached --stat
+echo ""
+
+# ---------------------------------------------------------------------------
+# Stash unstaged changes so gates see exactly the staged content
+# ---------------------------------------------------------------------------
+
+STASH_POPPED=0
+STASHED=0
+if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+    if git stash push --keep-index --include-untracked -q -m "pre-commit-hook-$$" 2>/dev/null; then
+        trap 'if [ "$STASH_POPPED" -eq 0 ]; then git stash pop -q 2>/dev/null || true; fi' EXIT INT TERM
+        STASHED=1
+    else
+        warn "could not stash unstaged changes; gates may see working-tree state, not index"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Merge-conflict markers (HARD GATE)
+# ---------------------------------------------------------------------------
+
+echo "--- MERGE CONFLICT MARKERS ---"
+if CONFLICT_OUT=$(git diff --check --cached 2>&1); then
+    echo "  (none)"
+else
+    fail "merge conflict markers or whitespace errors in staged diff:"
+    echo "$CONFLICT_OUT" | sed 's/^/  /'
+fi
+echo ""
+
+# ---------------------------------------------------------------------------
+# bash -n on staged *.sh blobs (HARD GATE)
+# ---------------------------------------------------------------------------
+
+echo "--- BASH SYNTAX ---"
+if [ -z "$STAGED_SH" ]; then
+    echo "  (no .sh files staged)"
+else
+    TMPDIR_SH=$(mktemp -d)
+    trap_prev=$(trap -p EXIT | sed "s/trap -- '//; s/' EXIT//" || true)
+    trap "rm -rf '$TMPDIR_SH'; $trap_prev" EXIT
+
+    BAD_SH=()
+    while IFS= read -r path; do
+        [ -z "$path" ] && continue
+        tmpfile="$TMPDIR_SH/$(basename "$path")"
+        if ! git show ":$path" > "$tmpfile" 2>/dev/null; then
+            continue
+        fi
+        if ! SYN_OUT=$(bash -n "$tmpfile" 2>&1); then
+            BAD_SH+=("$path")
+            echo "  $path:"
+            echo "$SYN_OUT" | sed 's/^/    /'
+        fi
+    done <<< "$STAGED_SH"
+
+    if [ "${#BAD_SH[@]}" -eq 0 ]; then
+        echo "  (all staged .sh files parse cleanly)"
+    else
+        fail "${#BAD_SH[@]} file(s) failed bash -n"
+    fi
+fi
+echo ""
+
+# ---------------------------------------------------------------------------
+# Restore unstaged changes before informational checks on the diff
+# ---------------------------------------------------------------------------
+
+if [ "$STASHED" = "1" ]; then
+    git stash pop -q 2>/dev/null || true
+    STASH_POPPED=1
+fi
+
+# ---------------------------------------------------------------------------
+# Informational: adversary-check.sh (no LLM, exits 0)
+# ---------------------------------------------------------------------------
+
+echo "--- ADVERSARY MECHANICAL CHECK ---"
+if [ "${PI_SKIP_ADVERSARY_CHECK:-0}" = "1" ]; then
+    echo "  (skipped: PI_SKIP_ADVERSARY_CHECK=1)"
+elif [ ! -x "$ADVERSARY_CHECK" ]; then
+    warn "adversary-check.sh not found at $ADVERSARY_CHECK -- skipping"
+    echo "         Install pi-tools (run install.sh) to populate ~/.pi/agent/tools/."
+else
+    "$ADVERSARY_CHECK" "$REPO_ROOT" 2>&1 | sed 's/^/  /'
+fi
+echo ""
+
+# ---------------------------------------------------------------------------
+# WARNINGS
+# ---------------------------------------------------------------------------
+
+echo "--- LARGE ADDITIONS (>150 lines in one file) ---"
+FOUND_LARGE=0
+while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    added=$(git diff --cached --numstat -- "$file" 2>/dev/null | awk '{print $1}')
+    if [ -n "$added" ] && [ "$added" != "-" ] && [ "$added" -gt 150 ]; then
+        warn "$file (+$added lines)"
+        FOUND_LARGE=1
+    fi
+done <<< "$STAGED_ALL"
+if [ "$FOUND_LARGE" -eq 0 ]; then
+    echo "  (none)"
+fi
+echo ""
+
+echo "--- NEW TODOs / FIXMEs / HACKs ---"
+TODO_LINES=$(git diff --cached 2>/dev/null | grep -nE '^\+' | grep -iE 'TODO|FIXME|HACK|XXX' | head -20 || true)
+if [ -n "$TODO_LINES" ]; then
+    echo "$TODO_LINES" | while IFS= read -r line; do
+        echo "  [warn] $line"
+    done
+    WARN_COUNT=$((WARN_COUNT + 1))
+else
+    echo "  (none)"
+fi
+echo ""
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
+echo "========================================="
+if [ "$FAIL_COUNT" -gt 0 ]; then
+    echo " BLOCKED: $FAIL_COUNT check(s) failed, $WARN_COUNT warning(s)"
+    echo "========================================="
+    exit 1
+fi
+echo " OK: pre-commit checks passed ($WARN_COUNT warning(s))"
+echo "========================================="
+exit 0

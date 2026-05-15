@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+#
+# pre-push -- Adversary review gate for pi-tools.
+#
+# Hard gates (exit non-zero, blocks the push):
+#   - adversary scan returns FAIL on any ref being pushed
+#   - new-branch push but origin/main is missing locally
+#     (run `git fetch origin` first)
+#
+# Informational (exit 0, push proceeds, operator should follow up):
+#   - adversary scan returns CONCERNS -- review summary and per-finding
+#     details print to stdout; full review file persists under
+#     pi-tools/reviews/<basename>-<ts>.md
+#
+# Mandatory: this hook intentionally has NO env-var bypass (unlike
+# pre-commit). `git push --no-verify` is git's builtin escape hatch and
+# cannot be intercepted; it is strongly discouraged for pushes.
+#
+# Branch model: trunk is `main`; feature branches are cut from `main`
+# and reviewed against `origin/main`. Single-developer workflow; the
+# remote-tracking ref is the source of truth for "what's already
+# upstream."
+#
+# Range resolution (pre-push contract: git sends one line per ref on
+# stdin: "<local-ref> <local-sha> <remote-ref> <remote-sha>"):
+#   - remote-sha == 40 zeros (new branch upstream):
+#       scan "$(git merge-base origin/main $local_sha)..$local_sha"
+#   - otherwise:
+#       scan "$remote_sha..$local_sha" -- what the push actually adds.
+#
+# Deletions (local_sha == 40 zeros) are skipped silently.
+
+set -uo pipefail
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+SCAN_SH="$HOME/.pi/agent/tools/adversary-scan.sh"
+ZERO40="0000000000000000000000000000000000000000"
+BASE_REF="origin/main"
+
+if [[ ! -x "$SCAN_SH" ]]; then
+    echo "pre-push: $SCAN_SH not found or not executable."
+    echo "         Install pi-tools (run install.sh) before pushing."
+    exit 1
+fi
+
+echo "========================================="
+echo " pi-tools pre-push: adversary scan"
+echo "========================================="
+echo "Repo:    $REPO_ROOT"
+echo "Time:    $(date '+%Y-%m-%d %H:%M:%S')"
+
+FAIL_COUNT=0
+REF_COUNT=0
+
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+    REF_COUNT=$((REF_COUNT + 1))
+
+    if [[ "$local_sha" = "$ZERO40" ]]; then
+        echo ""
+        echo "--- $remote_ref (deletion) ---"
+        echo "  Skipped: no diff to scan."
+        continue
+    fi
+
+    if [[ "$remote_sha" = "$ZERO40" ]]; then
+        if ! git rev-parse --verify --quiet "$BASE_REF" >/dev/null; then
+            echo ""
+            echo "--- $local_ref -> $remote_ref (new branch) ---"
+            echo "  ERROR: $BASE_REF not found on this clone."
+            echo "         Run \`git fetch origin\` to populate it, then retry."
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            continue
+        fi
+        if ! base=$(git merge-base "$BASE_REF" "$local_sha" 2>/dev/null); then
+            echo ""
+            echo "--- $local_ref -> $remote_ref (new branch) ---"
+            echo "  ERROR: could not determine merge-base of $BASE_REF and $local_sha."
+            echo "         Refusing to push without a scannable range."
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            continue
+        fi
+        RANGE="$base..$local_sha"
+        echo ""
+        echo "--- $local_ref -> $remote_ref (new branch) ---"
+        echo "  Range:  $RANGE (merge-base with $BASE_REF)"
+    else
+        RANGE="$remote_sha..$local_sha"
+        echo ""
+        echo "--- $local_ref -> $remote_ref ---"
+        echo "  Range:  $RANGE"
+    fi
+
+    # cd to repo root so review files land under pi-tools/reviews/.
+    if ! ( cd "$REPO_ROOT" && "$SCAN_SH" --range "$RANGE" --gate ); then
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+done
+
+echo ""
+echo "========================================="
+if [[ "$REF_COUNT" -eq 0 ]]; then
+    echo " No refs received on stdin -- nothing to scan."
+    echo "========================================="
+    exit 0
+fi
+if [[ "$FAIL_COUNT" -gt 0 ]]; then
+    echo " BLOCKED: $FAIL_COUNT of $REF_COUNT ref(s) failed adversary gate"
+    echo "========================================="
+    exit 1
+fi
+echo " OK: adversary scan completed for $REF_COUNT ref(s)"
+echo "      (CONCERNS verdicts, if any, are printed above with review file paths)"
+echo "========================================="
+exit 0

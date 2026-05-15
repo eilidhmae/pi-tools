@@ -89,6 +89,32 @@ go to `tools/bash/` under the repo root (not inside `.pi/agent/`).
 bash install.sh --force
 ```
 
+## Git hooks (this repo)
+
+`hooks/` contains pre-commit and pre-push hooks that gate this clone
+with the adversary harness. Install once per clone:
+
+```bash
+bash hooks/install.sh
+```
+
+What they do:
+
+- **pre-commit** (fast, mechanical) — blocks on merge-conflict markers
+  and `bash -n` failures on staged `*.sh`; runs
+  `~/.pi/agent/tools/adversary-check.sh` for an informational mechanical
+  report; warns on large additions and new TODO/FIXME lines.
+  Bypass: `git commit --no-verify` (discouraged).
+  Skip just the adversary-check: `PI_SKIP_ADVERSARY_CHECK=1`.
+- **pre-push** (heavy, LLM) — runs
+  `~/.pi/agent/tools/adversary-scan.sh --range <range> --gate` per ref.
+  FAIL verdict blocks the push; CONCERNS prints findings + review path
+  and lets the push through. New-branch pushes anchor on `origin/main`,
+  so run `git fetch origin` if the remote-tracking ref is missing.
+  No env-var bypass; mandatory gate.
+
+Reviews land under `pi-tools/reviews/<basename>-<timestamp>.md`.
+
 ## Models
 
 Two runtime paths over the **same** underlying model — Qwen3-Coder
