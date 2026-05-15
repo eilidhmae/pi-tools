@@ -92,7 +92,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-TARGET_LABEL=$(echo "$TARGET" | tr '/' '_' | sed 's/\.[^.]*$//')
+# Strip a leading `./` before substituting separators so `./foo/bar.go`
+# becomes label `foo_bar`, not `._foo_bar`. The latter looks like a
+# macOS AppleDouble resource-fork file (`._<name>`), which some tooling
+# (tar archives, web servers) filters or treats specially. HEAD / STAGED /
+# RANGE:* targets start with capital letters so the strip is a no-op.
+TARGET_LABEL=$(echo "${TARGET#./}" | tr '/' '_' | sed 's/\.[^.]*$//')
 REVIEW_DIR="reviews"
 REVIEW_FILE="${REVIEW_DIR}/${TARGET_LABEL}-${TIMESTAMP}.md"
 
