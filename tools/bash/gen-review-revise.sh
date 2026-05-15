@@ -33,8 +33,20 @@ set -euo pipefail
 
 SPEC="${1:?Usage: gen-review-revise.sh <spec.md> [--revise] [--model <model>]}"
 REVISE=0
-MODEL="qwen3-coder:30b"
-PROVIDER="ollama"
+
+# --- Auto-detect default provider/model ---
+# On Apple Silicon with a local-mlx server reachable on localhost:18080,
+# prefer local-mlx + qwen3-coder-30b-a3b. Otherwise fall back to
+# qwen3-coder:30b via ollama (legacy default).
+# --provider / --model / --domain flags override this.
+if [[ "$(uname -m)" == "arm64" ]] && \
+   curl -fs --max-time 1 http://localhost:18080/v1/models >/dev/null 2>&1; then
+  MODEL="qwen3-coder-30b-a3b"
+  PROVIDER="local-mlx"
+else
+  MODEL="qwen3-coder:30b"
+  PROVIDER="ollama"
+fi
 ADVERSARY_ADAPTER=0
 
 shift
