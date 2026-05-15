@@ -30,7 +30,7 @@ import { spawn } from "child_process";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 
-import { captureFromQuorum, ReviewerOutput } from "./adversary-capture";
+import { captureFromQuorum, ReviewerOutput } from "./lib/adversary-capture";
 
 // --- Configuration ---
 //
