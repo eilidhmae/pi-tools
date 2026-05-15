@@ -45,6 +45,37 @@ bash tools/bash/adversary-check.sh . || bash ~/.pi/agent/tools/adversary-check.s
 The script **always exits 0**. Findings are in stdout — do not gate on exit
 code. Read the output and act on the flags it raises.
 
+## LLM-Backed Adversary Scan (preferred, not gated)
+
+The mechanical baseline is the *floor*, not the ceiling. Before treating a
+non-trivial diff as done, also run an LLM-backed adversary scan:
+
+```bash
+# Range scope (pre-push semantics):
+bash ~/.pi/agent/tools/adversary-scan.sh --range <base>..HEAD
+
+# Staged scope (pre-commit semantics):
+bash ~/.pi/agent/tools/adversary-scan.sh --staged
+
+# Single artifact:
+bash ~/.pi/agent/tools/adversary-pass.sh <path>
+```
+
+These are **not** pre-commit gates — the pre-commit hook deliberately runs
+only the mechanical baseline so it doesn't punish iteration. The pre-push
+hook *does* run the LLM scan with `--gate`. Running the scan locally before
+push is the preferred workflow: earlier feedback is cheaper than later
+feedback, and the verdict + findings are written to `reviews/<basename>-<ts>.md`
+for the record either way.
+
+When a heterogeneous quorum stack is available (a primary adversary provider
+plus a contrast model of a different family on a sibling port), run the scan
+through *both* — disagreement is signal worth surfacing.
+
+Skip the LLM scan only for changes where it has nothing to add: typo /
+comment-only edits, mechanical rebases, or commits whose contents the pre-push
+gate will scan a moment later anyway.
+
 ## Mutation Verification Safety
 
 Applies to any agent running bash when verifying behaviour by mutating a file.

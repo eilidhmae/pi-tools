@@ -27,6 +27,11 @@
 #   tools/bash/adversary-pass.sh               Adversary pipeline script
 #   tools/bash/adversary-scan.sh               Scope-inferring scan wrapper
 #   tools/bash/gen-review-revise.sh            Generate → review → revise
+#
+# Also chmod+x the in-repo server launcher (not installed elsewhere —
+# invoke it directly from the pi-tools checkout):
+#
+#   server/mlx-server.sh                       Qwen track + extra-models
 
 set -euo pipefail
 
@@ -176,6 +181,17 @@ install_file \
   "${TOOLS_DIR}/gen-review-revise.sh"
 chmod +x "${TOOLS_DIR}/gen-review-revise.sh"
 
+# --- Make in-repo server launchers executable (no copy; invoke from repo) ---
+# mlx-server.sh and the mlx-lm-multi/mola launchers reference each other
+# by SCRIPT_DIR-relative paths, so they must run from the pi-tools tree.
+# Installing them under ~/.pi/agent/ would break those relative paths.
+if [[ -f "$SCRIPT_DIR/server/mlx-server.sh" ]]; then
+  chmod +x "$SCRIPT_DIR/server/mlx-server.sh"
+fi
+for sh in "$SCRIPT_DIR/server/mlx-lm-multi"/*.sh "$SCRIPT_DIR/server/mola"/*.sh; do
+  [[ -f "$sh" ]] && chmod +x "$sh"
+done
+
 # --- Verify pi models.json has ollama and (optionally) local-mlx configured ---
 # Derived from PI_AGENT_DIR so --local installs land in the repo and global
 # installs land under $HOME.
@@ -312,6 +328,12 @@ echo ""
 echo "   adversary-pass.sh <file>          # headless adversary pipeline"
 echo "   adversary-pass.sh <file> --quorum # with manual quorum"
 echo "   gen-review-revise.sh <spec.md>    # full generate→review→revise"
+echo ""
+echo " Server stack control (run from the pi-tools checkout):"
+echo "   bash $SCRIPT_DIR/server/mlx-server.sh up      # Qwen + extras"
+echo "   bash $SCRIPT_DIR/server/mlx-server.sh status  # listeners + health"
+echo "   bash $SCRIPT_DIR/server/mlx-server.sh list    # configured tracks"
+echo "   See $SCRIPT_DIR/server/extra-models/README.md to add a contrast model."
 echo ""
 echo " Extensions active in all pi sessions:"
 echo "   adversary-hook.ts  (mechanical check after every write/edit)"

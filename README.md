@@ -45,19 +45,18 @@ pi-tools/
 │   ├── adversary-check.sh            # mechanical baseline (no LLM, exits 0)
 │   ├── adversary-pass.sh             # headless adversary pipeline
 │   └── gen-review-revise.sh          # generate → review → revise cycle
-├── server/                           # local MLX/MOLA inference launch tooling
-│   ├── README.md                     # server overview + first-time setup
-│   ├── HEALTH.md                     # operator runbook, fallback criteria
-│   ├── bootstrap-mac.sh              # one-shot M5 Max setup
-│   ├── models.json.template
-│   ├── mlx-lm-multi/                 # default track (one process per adapter)
-│   └── mola/                         # opt-in track (one base, many adapters)
-└── examples/
-    └── mlx-server.sh                 # reference operator script for the
-                                      # Qwen production stack + a side-by-
-                                      # side contrast model (heterogeneous
-                                      # quorum). Adapt paths/model id for
-                                      # your workstation.
+└── server/                           # local MLX/MOLA inference launch tooling
+    ├── README.md                     # server overview + first-time setup
+    ├── HEALTH.md                     # operator runbook, fallback criteria
+    ├── bootstrap-mac.sh              # one-shot M5 Max setup
+    ├── models.json.template
+    ├── mlx-server.sh                 # operator entry point: up/down/status
+    │                                 # for Qwen track + configured extras
+    ├── mlx-lm-multi/                 # default Qwen track (one process per adapter)
+    ├── mola/                         # opt-in Qwen track (one base, many adapters)
+    └── extra-models/                 # config-driven side-by-side mlx_lm.servers
+        ├── README.md                 # how to add a contrast model
+        └── config.conf               # <short-name> <port> <hf-repo-id> rows
 ```
 
 ## Install
@@ -97,21 +96,34 @@ bash install.sh --force
 
 ## Running a contrast model for heterogeneous quorum
 
-`examples/mlx-server.sh` is a reference operator script that brings up
-the standard Qwen `mlx-lm-multi` stack on `:18080`/`:18090` **and** a
-second mlx_lm.server on `:18100` for a coding-specialist model of a
-different family (Mistral's Codestral-22B in the reference config),
-exposed as a sibling provider `local-mlx-codestral` in `models.json`.
-With both servers up, `adversary-pass.sh` can be invoked twice on the
-same artifact — once via the default Qwen provider, once via
-`--provider local-mlx-codestral` — to get a two-model heterogeneous
+`server/mlx-server.sh` brings up the standard Qwen `mlx-lm-multi`
+stack **and** any side-by-side `mlx_lm.server` processes declared in
+`server/extra-models/config.conf` (a `<short-name> <port>
+<hf-repo-id>` row per contrast model, same shape as
+`mlx-lm-multi/adapters.conf`). Operators wire a matching
+`local-mlx-<short-name>` provider in `models.json`; with both servers
+up, `adversary-pass.sh` can be invoked twice on the same artifact —
+once via the default Qwen provider, once via
+`--provider local-mlx-<short-name>` — for a two-model heterogeneous
 review until shell `--quorum` learns to honour `PI_QUORUM_MODELS`.
 
-The script is an example, not yet wired into `install.sh`; copy it out
-of `examples/` and adapt the paths and contrast-model glob to your
-workstation. See the script header for usage and the rationale for
-running the contrast model side-by-side rather than behind the Qwen
-proxy.
+Quick start:
+
+```bash
+bash server/mlx-server.sh up                  # Qwen + all uncommented extras
+bash server/mlx-server.sh list                # configured tracks
+bash server/mlx-server.sh status              # listeners + health
+```
+
+The Qwen proxy hardcodes its base id, so contrast models can't slot
+in behind it — they run on their own ports (`:18100+`) and pi talks to
+them directly via the sibling provider entry. See
+`server/extra-models/README.md` for adding a contrast model and the
+`models.json` provider snippet.
+
+Workstation-specific config: point `PI_EXTRA_CONF` at a checkout-local
+config file (e.g. a wrapper in your dotfiles) to keep per-workstation
+model choices out of the pi-tools tree.
 
 ## Git hooks (this repo)
 
