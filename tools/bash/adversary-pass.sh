@@ -277,11 +277,15 @@ echo ""
 # --- Extract verdict ---
 # Prefer the YAML block's `verdict:` (authoritative per SKILL.md).
 # Fall back to the prose `**VERDICT: …**` if YAML absent.
+# `|| true` on each pipeline so an empty $REVIEW (e.g. model emitted
+# nothing) doesn't make grep return 1, which pipefail would propagate
+# and `set -e` would convert into a script abort — bypassing the
+# cascading fallbacks below.
 VERDICT=$(echo "$REVIEW" | grep -E '^verdict:[[:space:]]*(PASS|CONCERNS|FAIL)\b' \
-            | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1)
+            | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1 || true)
 if [[ -z "$VERDICT" ]]; then
   VERDICT=$(echo "$REVIEW" | grep -E '\*\*VERDICT:|\*\*PASS\*\*|\*\*CONCERNS\*\*|\*\*FAIL\*\*' \
-              | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1)
+              | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1 || true)
 fi
 [[ -z "$VERDICT" ]] && VERDICT="UNKNOWN"
 

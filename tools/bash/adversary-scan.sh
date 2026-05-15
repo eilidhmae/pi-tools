@@ -206,7 +206,11 @@ for unit in "${UNITS[@]}"; do
     OUT=$("$PASS_SH" "$unit" "${PASS_THRU[@]}" 2>&1)
   fi
   echo "$OUT"
-  V=$(echo "$OUT" | grep -E '^Verdict:' | head -1 | awk '{print $2}')
+  # `|| true` so an empty $OUT (adversary-pass.sh wrote no Verdict
+  # line, e.g. because pi emitted nothing) doesn't make grep return 1,
+  # which pipefail would propagate and `set -e` would convert into a
+  # script abort — silently killing the rest of the batch.
+  V=$(echo "$OUT" | grep -E '^Verdict:' | head -1 | awk '{print $2}' || true)
   V="${V:-UNKNOWN}"
   case "$V" in
     PASS)     PASS_COUNT=$((PASS_COUNT + 1)) ;;
