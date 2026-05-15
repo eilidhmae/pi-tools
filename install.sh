@@ -220,6 +220,67 @@ elif ! grep -q "local-mlx" "$MODELS_JSON" 2>/dev/null; then
   echo "      block from: $TEMPLATE"
 fi
 
+# --- Apple Silicon + local-mlx autodetect: seed default provider/model ---
+#
+# pi 0.74.0's model resolver (core/model-resolver.js findInitialModel) falls
+# through to "first available model" when no CLI flags, --models scoping, or
+# settings.json defaults match. Neither `ollama` nor `local-mlx` are in pi's
+# hardcoded defaultModelPerProvider list, so the first available model is
+# picked by iteration order — landing on whichever provider is declared first
+# in models.json (almost always `ollama` per the template). That gives
+# `pi /adversary-review` and similar prompt commands a 404 when ollama doesn't
+# have `qwen3-coder:30b` pulled, even on machines where the whole rest of the
+# harness expects local-mlx.
+#
+# Seed settings.json with the explicit defaults when:
+#   - arch is arm64 (Apple Silicon), AND
+#   - localhost:18080/v1/models responds within 1s (local-mlx server up).
+# Existing defaultProvider/defaultModel values are preserved (never clobber
+# operator config); other settings.json keys are merged through untouched.
+SETTINGS_JSON="${PI_AGENT_DIR}/settings.json"
+if [[ "$(uname -m)" == "arm64" ]] && \
+   curl -fs --max-time 1 http://localhost:18080/v1/models >/dev/null 2>&1; then
+  # `|| rc=$?` so `set -e` doesn't abort on the expected exit 2 path
+  # (settings.json already has defaults the operator wants preserved).
+  rc=0
+  python3 - "$SETTINGS_JSON" <<'PYEOF' || rc=$?
+import json, os, sys
+path = sys.argv[1]
+data = {}
+if os.path.exists(path):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:
+        data = {}
+if data.get("defaultProvider") or data.get("defaultModel"):
+    sys.exit(2)
+data["defaultProvider"] = "local-mlx"
+data["defaultModel"] = "qwen3-coder-30b-a3b"
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PYEOF
+  case "$rc" in
+    0)
+      echo ""
+      echo "=== Seeded default provider/model in $SETTINGS_JSON ==="
+      echo "    local-mlx + qwen3-coder-30b-a3b (Apple Silicon + local-mlx reachable)."
+      ;;
+    2)
+      echo ""
+      echo "NOTE: $SETTINGS_JSON already sets defaultProvider/defaultModel — leaving as-is."
+      ;;
+    *)
+      echo ""
+      echo "WARNING: could not update $SETTINGS_JSON (python3 exit $rc); skipping."
+      ;;
+  esac
+fi
+
 if [[ "$TARGET_MODE" == "local" ]]; then
   echo ""
   echo "NOTE: --local mode placed models.json at:"
