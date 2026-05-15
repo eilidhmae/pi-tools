@@ -208,6 +208,104 @@ check("split fence label: verdict PASS",
       r6.review !== undefined && r6.review.verdict === "PASS");
 
 // ---------------------------------------------------------------------------
+// Test 7: salvage path — opening fence with no closing fence, last finding
+// truncated mid-folded-scalar. Observed on M5 Max during Phase 3 b4c7477
+// replay (2026-05-14) on files > ~300 lines: degenerate repetition consumes
+// the output budget, EOF lands mid-`message:`. Salvage drops the trailing
+// finding and marks the record partial.
+const truncated = "```adversary-review\n" +
+  "verdict: CONCERNS\n" +
+  "confidence: medium\n" +
+  "artifact:\n" +
+  "  path: /tmp/morphs.go\n" +
+  "  sha256: 9a78fd01404eff92\n" +
+  "  lines_reviewed: 1-695\n" +
+  "findings:\n" +
+  "  - id: F1\n" +
+  "    severity: minor\n" +
+  "    category: maintainability\n" +
+  "    file: /tmp/morphs.go\n" +
+  "    line: 10\n" +
+  "    line_end: 10\n" +
+  "    message: >\n" +
+  "      A complete first finding.\n" +
+  "  - id: F2\n" +
+  "    severity: minor\n" +
+  "    category: maintainability\n" +
+  "    file: /tmp/morphs.go\n" +
+  "    line: 20\n" +
+  "    line_end: 20\n" +
+  "    message: >\n" +
+  "      Truncated mid-sentence and the YAML never closes its f";
+const r7 = parseAdversaryReview(truncated);
+check("salvage: ok=true", r7.ok === true,
+      `errors=${JSON.stringify(r7.errors)} fatal=${r7.fatal}`);
+check("salvage: partial=true on result", r7.partial === true);
+check("salvage: partial=true on review",
+      r7.review !== undefined && r7.review.partial === true);
+check("salvage: verdict CONCERNS",
+      r7.review !== undefined && r7.review.verdict === "CONCERNS");
+check("salvage: keeps the complete first finding",
+      r7.review !== undefined && r7.review.findings.length >= 1 &&
+      r7.review.findings[0].id === "F1",
+      `findings=${JSON.stringify(r7.review?.findings)}`);
+// The truncated F2 above has the required scalar fields (id, severity,
+// category, file, line, message) all populated as parseable strings, so
+// the schema validator accepts it — the truncation lost only the tail
+// of the folded-scalar message. That's fine; partial=true flags the
+// record for curation regardless of which findings made it.
+check("salvage: doesn't fatal on a half-written final finding",
+      r7.fatal === undefined,
+      `fatal=${r7.fatal}`);
+
+// ---------------------------------------------------------------------------
+// Test 8: salvage path — opening fence, finishes mid-key with the YAML
+// validator unable to construct the trailing finding. The salvage logic
+// must drop that finding and keep the prior ones rather than fatal-erroring.
+const truncMidKey = "```adversary-review\n" +
+  "verdict: CONCERNS\n" +
+  "confidence: high\n" +
+  "artifact:\n" +
+  "  path: /tmp/x.go\n" +
+  "  sha256: deadbeefcafef00d\n" +
+  "  lines_reviewed: 1-50\n" +
+  "findings:\n" +
+  "  - id: F1\n" +
+  "    severity: minor\n" +
+  "    category: correctness\n" +
+  "    file: /tmp/x.go\n" +
+  "    line: 5\n" +
+  "    message: First, complete.\n" +
+  "  - id: F2\n" +
+  "    severity: minor\n" +
+  // No category/file/line/message — parse fails on this item.
+  "";
+const r8 = parseAdversaryReview(truncMidKey);
+check("salvage mid-key: ok=true (drops truncated F2)",
+      r8.ok === true,
+      `errors=${JSON.stringify(r8.errors)} fatal=${r8.fatal}`);
+check("salvage mid-key: review.partial=true",
+      r8.review !== undefined && r8.review.partial === true);
+check("salvage mid-key: kept F1, dropped F2",
+      r8.review !== undefined && r8.review.findings.length === 1 &&
+      r8.review.findings[0].id === "F1",
+      `findings=${JSON.stringify(r8.review?.findings)}`);
+
+// ---------------------------------------------------------------------------
+// Test 9: salvage must NOT trigger when the closing fence IS present. The
+// canonical path should still set partial undefined.
+const closedAgain = "```adversary-review\n" +
+  "verdict: PASS\nconfidence: high\n" +
+  "artifact:\n  path: y.go\n  sha256: aaaaaaaaaaaaaaaa\n  lines_reviewed: 1-1\n" +
+  "findings: []\n```\ntrailing prose after fence\n";
+const r9 = parseAdversaryReview(closedAgain);
+check("closed fence: partial stays undefined",
+      r9.ok === true && r9.partial === undefined,
+      `partial=${r9.partial}`);
+check("closed fence: review.partial undefined",
+      r9.review !== undefined && r9.review.partial === undefined);
+
+// ---------------------------------------------------------------------------
 if (failures > 0) {
   // eslint-disable-next-line no-console
   console.error(`\n${failures} test(s) FAILED`);

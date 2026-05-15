@@ -27,6 +27,14 @@
 // The \s* between the opening ``` and the label matches the newline in
 // the split form and any incidental whitespace in the canonical form.
 const FENCE_RE = /```\s*adversary-review\s*\n([\s\S]*?)\n```/;
+// Salvage form: opening fence is present but the closing ``` was never
+// emitted — observed on M5 Max when the model goes into degenerate
+// repetition and runs out of output tokens mid-finding (Phase 3
+// b4c7477 replay, 2026-05-14: morphs/subsystems/parsebet each produced
+// 100+ same-template findings, then EOF mid-folded-scalar). The salvage
+// regex pairs with a try/catch in validateReview that drops the last
+// (likely truncated) finding rather than fatal-erroring.
+const OPEN_FENCE_RE = /```\s*adversary-review\s*\n([\s\S]*)$/;
 
 export const ALLOWED_VERDICTS = ["PASS", "CONCERNS", "FAIL"] as const;
 export const ALLOWED_CONFIDENCE = ["high", "medium", "low"] as const;
@@ -72,6 +80,11 @@ export interface AdversaryReview {
     passed: boolean;
     failures: string[];
   };
+  // Set when the closing fence was missing OR a trailing finding had to
+  // be dropped during salvage. Downstream curation treats partial=true
+  // records as labeled negatives (or candidates for hand review), not
+  // as clean bootstrap positives.
+  partial?: boolean;
 }
 
 export interface ParseResult {
@@ -79,6 +92,7 @@ export interface ParseResult {
   review?: AdversaryReview;
   errors: string[];
   fatal?: string;
+  partial?: boolean;
 }
 
 const SEVERITY_ALIASES: Record<string, Severity> = {
@@ -314,7 +328,7 @@ function normalizeCategory(raw: string, errors: string[], id: string): Category 
   throw new Error(`finding ${id}: category '${raw}' not recognized`);
 }
 
-function validateReview(raw: YamlMap, errors: string[]): AdversaryReview {
+function validateReview(raw: YamlMap, errors: string[], salvage = false): AdversaryReview {
   const verdict = asString(raw.verdict, "verdict").toUpperCase();
   if (!(ALLOWED_VERDICTS as readonly string[]).includes(verdict)) {
     throw new Error(`verdict '${verdict}' not in ${ALLOWED_VERDICTS.join("|")}`);
@@ -333,21 +347,34 @@ function validateReview(raw: YamlMap, errors: string[]): AdversaryReview {
   };
 
   const findings: Finding[] = [];
+  let droppedTrailing = false;
   if (raw.findings !== undefined) {
     if (!Array.isArray(raw.findings)) throw new Error("findings: expected list");
     for (const item of raw.findings) {
-      if (!isMap(item)) throw new Error("finding: expected mapping");
-      const id = asString(item.id, "finding.id");
-      const severity = normalizeSeverity(asString(item.severity, "finding.severity"), errors, id);
-      const category = normalizeCategory(asString(item.category, "finding.category"), errors, id);
-      const file = asString(item.file, "finding.file");
-      const line = asInt(item.line, "finding.line");
-      const line_end = item.line_end !== undefined
-        ? asInt(item.line_end, "finding.line_end") : line;
-      const message = asString(item.message, "finding.message");
-      const suggested_fix = item.suggested_fix !== undefined
-        ? asString(item.suggested_fix, "finding.suggested_fix") : undefined;
-      findings.push({ id, severity, category, file, line, line_end, message, suggested_fix });
+      try {
+        if (!isMap(item)) throw new Error("finding: expected mapping");
+        const id = asString(item.id, "finding.id");
+        const severity = normalizeSeverity(asString(item.severity, "finding.severity"), errors, id);
+        const category = normalizeCategory(asString(item.category, "finding.category"), errors, id);
+        const file = asString(item.file, "finding.file");
+        const line = asInt(item.line, "finding.line");
+        const line_end = item.line_end !== undefined
+          ? asInt(item.line_end, "finding.line_end") : line;
+        const message = asString(item.message, "finding.message");
+        const suggested_fix = item.suggested_fix !== undefined
+          ? asString(item.suggested_fix, "finding.suggested_fix") : undefined;
+        findings.push({ id, severity, category, file, line, line_end, message, suggested_fix });
+      } catch (e) {
+        // In salvage mode the last finding may be truncated mid-key.
+        // Drop it (and any siblings already past the truncation point)
+        // and keep what we recovered.
+        if (salvage) {
+          errors.push(`finding dropped (incomplete): ${(e as Error).message}`);
+          droppedTrailing = true;
+          break;
+        }
+        throw e;
+      }
     }
   }
 
@@ -367,32 +394,46 @@ function validateReview(raw: YamlMap, errors: string[]): AdversaryReview {
     };
   }
 
-  return {
+  const out: AdversaryReview = {
     verdict: verdict as Verdict,
     confidence: confidence as Confidence,
     artifact,
     findings,
     mechanical_baseline,
   };
+  if (salvage && droppedTrailing) out.partial = true;
+  return out;
 }
 
 export function parseAdversaryReview(rawOutput: string): ParseResult {
   const errors: string[] = [];
-  const m = rawOutput.match(FENCE_RE);
-  if (!m) {
-    return { ok: false, errors, fatal: "no `adversary-review` fenced block found" };
+  let salvage = false;
+  let yamlSrc: string;
+
+  const closed = rawOutput.match(FENCE_RE);
+  if (closed) {
+    yamlSrc = closed[1];
+  } else {
+    const open = rawOutput.match(OPEN_FENCE_RE);
+    if (!open) {
+      return { ok: false, errors, fatal: "no `adversary-review` fenced block found" };
+    }
+    salvage = true;
+    yamlSrc = open[1];
   }
+
   let parsed: YamlMap;
   try {
-    parsed = readYAML(m[1]);
+    parsed = readYAML(yamlSrc);
   } catch (e) {
-    return { ok: false, errors, fatal: `YAML parse failed: ${(e as Error).message}` };
+    return { ok: false, errors, fatal: `YAML parse failed: ${(e as Error).message}`, partial: salvage };
   }
   let review: AdversaryReview;
   try {
-    review = validateReview(parsed, errors);
+    review = validateReview(parsed, errors, salvage);
   } catch (e) {
-    return { ok: false, errors, fatal: `schema validation failed: ${(e as Error).message}` };
+    return { ok: false, errors, fatal: `schema validation failed: ${(e as Error).message}`, partial: salvage };
   }
-  return { ok: true, review, errors };
+  if (salvage) review.partial = true;
+  return { ok: true, review, errors, partial: salvage || undefined };
 }

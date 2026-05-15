@@ -186,6 +186,7 @@ export function captureSingleReviewer(
       findings: review.findings,
       reviewerCount: 1,
       agreementType: "single-reviewer",
+      partial: review.partial === true ? true : undefined,
     },
     reviewers: [
       {
