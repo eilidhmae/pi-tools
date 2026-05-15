@@ -14,9 +14,15 @@
 #
 # Bypass the whole hook with `git commit --no-verify` (discouraged).
 #
-# Working-tree safety: unstaged changes are stashed with --keep-index and
-# restored on EXIT trap so gates see exactly what will be committed. The
-# adversary-check runs after the pop so it scans the full working tree.
+# Working-tree safety: every gate below is index-only -- conflict-marker
+# scan uses --cached, bash -n reads blobs via `git show :path`, the
+# warning passes use --cached. So unstaged edits cannot taint a gate
+# and no stash is needed. The informational adversary-check intentionally
+# scans the full working tree (its documented scope).
+#
+# NB: if a future gate shells out to a working-tree-walking tool
+# (gofmt -l, tsc --noEmit, a linter), reinstate the stash dance
+# (`git stash push --keep-index --include-untracked` + EXIT-trap pop).
 
 set -uo pipefail
 
@@ -64,22 +70,7 @@ git diff --cached --stat
 echo ""
 
 # ---------------------------------------------------------------------------
-# Stash unstaged changes so gates see exactly the staged content
-# ---------------------------------------------------------------------------
-
-STASH_POPPED=0
-STASHED=0
-if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-    if git stash push --keep-index --include-untracked -q -m "pre-commit-hook-$$" 2>/dev/null; then
-        trap 'if [ "$STASH_POPPED" -eq 0 ]; then git stash pop -q 2>/dev/null || true; fi' EXIT INT TERM
-        STASHED=1
-    else
-        warn "could not stash unstaged changes; gates may see working-tree state, not index"
-    fi
-fi
-
-# ---------------------------------------------------------------------------
-# Merge-conflict markers (HARD GATE)
+# Merge-conflict markers (HARD GATE) -- index-only via --cached.
 # ---------------------------------------------------------------------------
 
 echo "--- MERGE CONFLICT MARKERS ---"
@@ -92,7 +83,9 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
-# bash -n on staged *.sh blobs (HARD GATE)
+# bash -n on staged *.sh blobs (HARD GATE) -- reads from index via `git
+# show :path`, so unstaged edits to the same file don't influence the
+# check. Tempfile gives bash -n a filename to print in error messages.
 # ---------------------------------------------------------------------------
 
 echo "--- BASH SYNTAX ---"
@@ -100,8 +93,7 @@ if [ -z "$STAGED_SH" ]; then
     echo "  (no .sh files staged)"
 else
     TMPDIR_SH=$(mktemp -d)
-    trap_prev=$(trap -p EXIT | sed "s/trap -- '//; s/' EXIT//" || true)
-    trap "rm -rf '$TMPDIR_SH'; $trap_prev" EXIT
+    trap 'rm -rf "$TMPDIR_SH"' EXIT
 
     BAD_SH=()
     while IFS= read -r path; do
@@ -126,16 +118,8 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
-# Restore unstaged changes before informational checks on the diff
-# ---------------------------------------------------------------------------
-
-if [ "$STASHED" = "1" ]; then
-    git stash pop -q 2>/dev/null || true
-    STASH_POPPED=1
-fi
-
-# ---------------------------------------------------------------------------
-# Informational: adversary-check.sh (no LLM, exits 0)
+# Informational: adversary-check.sh (no LLM, exits 0). Scope is the full
+# working tree (its documented behaviour); no stash needed.
 # ---------------------------------------------------------------------------
 
 echo "--- ADVERSARY MECHANICAL CHECK ---"
@@ -150,7 +134,7 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
-# WARNINGS
+# WARNINGS -- both passes index-only via --cached.
 # ---------------------------------------------------------------------------
 
 echo "--- LARGE ADDITIONS (>150 lines in one file) ---"
