@@ -304,7 +304,10 @@ export default function (pi: any) {
     }
 
     // --- Inject quorum summary ---
-    await ctx.inject({
+    // pi 0.74.0 replaced ctx.inject() with the ExtensionAPI's sendMessage()
+    // (see core/extensions/loader.js createExtensionAPI). Shape of the
+    // custom message is unchanged.
+    pi.sendMessage({
       customType: "quorum-result",
       content:
         `\n---\n**Quorum**: ${quorumSummary}\n` +
