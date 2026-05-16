@@ -108,6 +108,12 @@ async def _forward(request: Request, path: str) -> Any:
     # to match its --model arg, and it doesn't know about our +suffix
     # convention — the adapter is loaded at boot.
     payload["model"] = BASE_MODEL_DIR
+    # Default repetition_penalty to break the F1..Fn YAML-list lock-in that
+    # the bare model falls into on structured-output adversary reviews.
+    # mlx_lm.server defaults this to 0.0 (off) and has no CLI flag, so the
+    # proxy is the only place we can set it without per-caller wiring.
+    # Callers can still override by sending repetition_penalty in the body.
+    payload.setdefault("repetition_penalty", 1.05)
     url = f"http://127.0.0.1:{port}{path}"
 
     headers = {k: v for k, v in request.headers.items()
