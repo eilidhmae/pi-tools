@@ -1,18 +1,5 @@
 {
   "providers": {
-    "ollama": {
-      "baseUrl": "http://localhost:11434/v1",
-      "api": "openai-completions",
-      "apiKey": "ollama",
-      "compat": {
-        "supportsDeveloperRole": false,
-        "supportsReasoningEffort": false
-      },
-      "models": [
-        { "id": "qwen3-coder:30b",   "name": "Qwen3-Coder 30B (Ollama)",     "contextWindow": 262144 },
-        { "id": "qwen3-coder-next",  "name": "Qwen3-Coder Next (Ollama)",    "contextWindow": 262144 }
-      ]
-    },
     "local-mlx": {
       "baseUrl": "http://localhost:18080/v1",
       "api": "openai-completions",
@@ -28,6 +15,30 @@
         { "id": "qwen3-coder-30b-a3b+python",     "name": "Qwen3-Coder 30B-A3B + Python specialist",   "contextWindow": 262144 },
         { "id": "qwen3-coder-30b-a3b+tf",         "name": "Qwen3-Coder 30B-A3B + Terraform specialist","contextWindow": 262144 },
         { "id": "qwen3-coder-30b-a3b+adversary",  "name": "Qwen3-Coder 30B-A3B + Adversary",           "contextWindow": 262144 }
+      ]
+    },
+    "local-mlx-codestral": {
+      "baseUrl": "http://localhost:18100/v1",
+      "api": "openai-completions",
+      "apiKey": "local",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        { "id": "mlx-community/Codestral-22B-v0.1-4bit", "name": "Codestral 22B v0.1 (MLX 4bit)", "contextWindow": 32768 }
+      ]
+    },
+    "local-mlx-dscoder": {
+      "baseUrl": "http://localhost:18120/v1",
+      "api": "openai-completions",
+      "apiKey": "local",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        { "id": "mlx-community/deepseek-coder-33b-instruct-hf-4bit-mlx", "name": "DeepSeek-Coder 33B Instruct V1 (MLX 4bit)", "contextWindow": 16384 }
       ]
     }
   }

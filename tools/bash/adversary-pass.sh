@@ -53,15 +53,28 @@ REVISE=0
 QUORUM=0
 
 # --- Auto-detect default provider/model ---
-# On Apple Silicon with a local-mlx server reachable on localhost:18080,
-# prefer local-mlx + qwen3-coder-30b-a3b (the M5 Max / GRAIL target path).
-# Otherwise fall back to qwen3-coder:30b via ollama (the legacy default,
-# preserving today's behaviour for non-Apple operators).
+# On Apple Silicon the default is local-mlx + qwen3-coder-30b-a3b
+# (the M5 Max / GRAIL target path). If localhost:18080 is unreachable
+# we fail LOUDLY rather than silently falling back to a different
+# backend -- corpus contamination from a fallback model (different
+# weights, different verdicts) is worse than a noisy abort. The
+# ollama fallback was removed on 2026-05-16 after a salvage-batch
+# silently produced records labelled ollama/qwen3-coder:30b when
+# the local-mlx probe momentarily failed.
+# On non-Apple platforms the legacy ollama fallback still applies.
 # --provider / --model / --adapter / --domain flags override this.
-if [[ "$(uname -m)" == "arm64" ]] && \
-   curl -fs --max-time 1 http://localhost:18080/v1/models >/dev/null 2>&1; then
+if [[ "$(uname -m)" == "arm64" ]]; then
   MODEL="qwen3-coder-30b-a3b"
   PROVIDER="local-mlx"
+  if ! curl -fs --max-time 3 http://localhost:18080/v1/models >/dev/null 2>&1; then
+    echo "ERROR: default backend http://localhost:18080 unreachable on"  >&2
+    echo "       Apple Silicon. Bring it up with:"                        >&2
+    echo "         ~/src/my-macbook/mlx-server.sh up base"                >&2
+    echo "       Or pass an explicit --provider / --model to bypass."     >&2
+    echo "       (No ollama fallback on arm64; removed 2026-05-16 after"  >&2
+    echo "       a corpus-contamination incident -- see DECISIONS.md.)"   >&2
+    exit 2
+  fi
 else
   MODEL="qwen3-coder:30b"
   PROVIDER="ollama"
