@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+#
+# post-commit -- Non-blocking adversary scan for corpus capture.
+#
+# Runs adversary-scan.sh against the just-landed commit and writes
+# the review markdown + bootstrap.jsonl record asynchronously. The
+# scan never blocks the operator's shell -- git post-commit returns
+# immediately while the scan runs in the background. The point is to
+# build up the training corpus on every commit without changing the
+# dev loop.
+#
+# Skip conditions (silent exit 0):
+#   - merge commits (HEAD has two parents) -- diffs are large, capture
+#     value is low, and the range HEAD~..HEAD is ambiguous
+#   - root commit (no HEAD~) -- no range to scan
+#   - commit message contains [skip scan] or [no scan] (case-insensitive)
+#   - PI_SKIP_POST_COMMIT_SCAN=1 in env
+#   - adversary-scan.sh not found at any candidate path
+#
+# Output:
+#   - one-line stdout message naming the log file
+#   - the scan's full output streams into the log file in the
+#     background; bootstrap.jsonl records get appended by the scan
+#     itself (existing capture pipeline)
+#
+# Bypass with `git commit --no-verify` (skips all hooks) or
+# PI_SKIP_POST_COMMIT_SCAN=1 in env.
+
+set -uo pipefail
+
+if [[ "${PI_SKIP_POST_COMMIT_SCAN:-0}" == "1" ]]; then
+    exit 0
+fi
+
+# Skip merge commits (two parents).
+if git rev-parse --verify -q HEAD^2 >/dev/null 2>&1; then
+    exit 0
+fi
+
+# Skip root commit (no HEAD~).
+if ! git rev-parse --verify -q HEAD~ >/dev/null 2>&1; then
+    exit 0
+fi
+
+# Skip if commit message opts out.
+if git log -1 --format=%B | grep -qiE '\[(skip|no) scan\]'; then
+    exit 0
+fi
+
+# Find adversary-scan.sh; prefer the global install, fall back to
+# in-tree (the source pi-tools clone itself).
+REPO_ROOT=$(git rev-parse --show-toplevel)
+SCAN=""
+for candidate in \
+    "$HOME/.pi/agent/tools/adversary-scan.sh" \
+    "$REPO_ROOT/.pi/agent/tools/adversary-scan.sh" \
+    "$REPO_ROOT/tools/bash/adversary-scan.sh" \
+; do
+    if [[ -x "$candidate" ]]; then
+        SCAN="$candidate"
+        break
+    fi
+done
+if [[ -z "$SCAN" ]]; then
+    exit 0
+fi
+
+SHA=$(git rev-parse --short HEAD)
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+LOG_DIR="$REPO_ROOT/reviews"
+mkdir -p "$LOG_DIR"
+LOG="$LOG_DIR/post-commit-${SHA}-${TS}.log"
+
+# Run the scan detached from the parent shell. nohup + disown so the
+# scan survives the operator's terminal closing; redirect all stdio
+# to the log file; & to background it.
+nohup bash -c "
+    cd '$REPO_ROOT' && '$SCAN' --range HEAD~..HEAD
+" >"$LOG" 2>&1 &
+disown
+
+echo "  [post-commit] adversary scan running in background → $(basename "$LOG")"
