@@ -73,10 +73,14 @@ LOG="$LOG_DIR/post-commit-${SHA}-${TS}.log"
 
 # Run the scan detached from the parent shell. nohup + disown so the
 # scan survives the operator's terminal closing; redirect all stdio
-# to the log file; & to background it.
-nohup bash -c "
-    cd '$REPO_ROOT' && '$SCAN' --range HEAD~..HEAD
-" >"$LOG" 2>&1 &
+# to the log file; & to background it. Paths are passed as positional
+# args (rather than interpolated into the single-quoted command string)
+# so a $REPO_ROOT or $SCAN containing a literal single quote can't
+# break out and become shell injection — the inner shell quotes them
+# safely.
+nohup bash -c '
+    cd "$1" && "$2" --range HEAD~..HEAD
+' _ "$REPO_ROOT" "$SCAN" >"$LOG" 2>&1 &
 disown
 
 echo "  [post-commit] adversary scan running in background → $(basename "$LOG")"
