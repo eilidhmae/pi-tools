@@ -114,6 +114,12 @@ async def _forward(request: Request, path: str) -> Any:
     # proxy is the only place we can set it without per-caller wiring.
     # Callers can still override by sending repetition_penalty in the body.
     payload.setdefault("repetition_penalty", 1.05)
+    # Widen the penalty's context window from mlx_lm's default of 20
+    # tokens. Phase C v2 found bootstrap-mac.sh produces a 3-message
+    # cycle (~120-150 tokens per period); a 20-token window can't see
+    # the cycle wrap, so the penalty fails to fire. 256 covers cycle
+    # periods comfortably without measurable per-token overhead.
+    payload.setdefault("repetition_context_size", 256)
     url = f"http://127.0.0.1:{port}{path}"
 
     headers = {k: v for k, v in request.headers.items()
