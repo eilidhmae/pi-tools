@@ -127,8 +127,8 @@ model choices out of the pi-tools tree.
 
 ## Git hooks (this repo)
 
-`hooks/` contains pre-commit and pre-push hooks that gate this clone
-with the adversary harness. Install once per clone:
+`hooks/` contains pre-commit, post-commit, and pre-push hooks that gate
+this clone with the adversary harness. Install once per clone:
 
 ```bash
 bash hooks/install.sh
@@ -142,14 +142,25 @@ What they do:
   report; warns on large additions and new TODO/FIXME lines.
   Bypass: `git commit --no-verify` (discouraged).
   Skip just the adversary-check: `PI_SKIP_ADVERSARY_CHECK=1`.
-- **pre-push** (heavy, LLM) — runs
+- **post-commit** (capture-shaped, non-blocking) — runs
+  `~/.pi/agent/tools/adversary-scan.sh --range HEAD~..HEAD` in the
+  background after every commit lands, writing the review to
+  `reviews/post-commit-<sha>-<ts>.log` and appending a record to
+  `~/.pi/agent/training/adversary-captures/bootstrap.jsonl`. The hook
+  prints one line and exits immediately; the scan continues async.
+  Skips merge commits, root commits, and messages containing
+  `[skip scan]` / `[no scan]`. Disable per-commit with
+  `PI_SKIP_POST_COMMIT_SCAN=1` or `git commit --no-verify`.
+- **pre-push** (heavy, LLM, gate) — runs
   `~/.pi/agent/tools/adversary-scan.sh --range <range> --gate` per ref.
   FAIL verdict blocks the push; CONCERNS prints findings + review path
   and lets the push through. New-branch pushes anchor on `origin/main`,
   so run `git fetch origin` if the remote-tracking ref is missing.
   No env-var bypass; mandatory gate.
 
-Reviews land under `pi-tools/reviews/<basename>-<timestamp>.md`.
+Reviews land under `pi-tools/reviews/<basename>-<timestamp>.md`
+(per-file scans) or `pi-tools/reviews/post-commit-<sha>-<ts>.log`
+(post-commit captures).
 
 ## Models
 
