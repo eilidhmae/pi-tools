@@ -51,6 +51,7 @@ uv pip install --upgrade \
     'huggingface_hub>=0.34' \
     'fastapi>=0.110' \
     'uvicorn>=0.30' \
+    'watchfiles>=0.20' \
     'pyyaml>=6.0' \
     'packaging>=23.0'
 

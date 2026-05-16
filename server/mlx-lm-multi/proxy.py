@@ -141,4 +141,14 @@ async def completions(request: Request):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
+    # Default: reload on proxy.py edits, so a `git pull` / local edit takes
+    # effect without a manual kill+relaunch (the gap that hid the Phase C
+    # repetition_penalty fix until the proxy was restarted by hand). Reload
+    # interrupts in-flight streaming requests — fine on a dev workstation,
+    # turn it off in production-ish setups with PI_PROXY_RELOAD=0.
+    if os.environ.get("PI_PROXY_RELOAD", "1") != "0":
+        here = os.path.dirname(os.path.abspath(__file__))
+        uvicorn.run("proxy:app", host="127.0.0.1", port=PORT, log_level="info",
+                    reload=True, reload_dirs=[here])
+    else:
+        uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
