@@ -135,8 +135,9 @@ mkdir -p "$REVIEW_DIR"
 # so this script must supply everything the adversary needs in the
 # prompt itself. Steps 0-2 of the SKILL protocol (mechanical baseline,
 # claim verification, test verification) are skipped — they require
-# tool access. Steps 3-9 (Complexity, Scope, Alternatives, Assumptions,
-# Security, Verdict) execute on the inlined content.
+# tool access. Steps 3-11 (Operational Robustness, Complexity, Scope,
+# Alternatives, Assumptions, Security, Integer/Bounds, Verdict) execute
+# on the inlined content.
 PAYLOAD=$(mktemp -t adv-payload)
 trap 'rm -f "$PAYLOAD"' EXIT
 
@@ -155,7 +156,7 @@ case "$TARGET" in
       echo "Review the following working-tree diff. Inline content only;"
       echo "you have no file-system tools. Skip protocol Steps 0-2"
       echo "(mechanical baseline, claim verification, test verification)."
-      echo "Execute Steps 3-9. Emit prose summary AND the fenced"
+      echo "Execute Steps 3-11. Emit prose summary AND the fenced"
       echo "adversary-review YAML block."
       echo
       echo "Set these artifact fields verbatim in the YAML block:"
@@ -182,7 +183,7 @@ case "$TARGET" in
     {
       echo "Review the following STAGED diff (pre-commit semantics)."
       echo "Inline content only; you have no file-system tools."
-      echo "Skip protocol Steps 0-2. Execute Steps 3-9. Emit prose"
+      echo "Skip protocol Steps 0-2. Execute Steps 3-11. Emit prose"
       echo "summary AND the fenced adversary-review YAML block."
       echo
       echo "Set these artifact fields verbatim in the YAML block:"
@@ -219,7 +220,7 @@ case "$TARGET" in
     {
       echo "Review the following commit-range diff ($RANGE_SPEC)."
       echo "Inline content only; you have no file-system tools."
-      echo "Skip protocol Steps 0-2. Execute Steps 3-9. Emit prose"
+      echo "Skip protocol Steps 0-2. Execute Steps 3-11. Emit prose"
       echo "summary AND the fenced adversary-review YAML block."
       echo
       echo "Set these artifact fields verbatim in the YAML block:"
@@ -249,7 +250,7 @@ case "$TARGET" in
       echo "Review the following source file as your sole work unit."
       echo "Inline content only; you have no file-system tools."
       echo "Skip protocol Steps 0-2 (mechanical baseline, claim"
-      echo "verification, test verification). Execute Steps 3-9"
+      echo "verification, test verification). Execute Steps 3-11"
       echo "(Complexity, Scope, Alternatives, Assumptions, Security,"
       echo "Verdict). Emit prose summary AND the fenced"
       echo "adversary-review YAML block."
