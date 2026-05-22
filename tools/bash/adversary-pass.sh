@@ -325,18 +325,30 @@ fi
 [[ -z "$VERDICT" ]] && VERDICT="UNKNOWN"
 
 echo "Verdict: $VERDICT"
+# Emit the resolved model so wrappers (adversary-loop.sh) can attribute
+# the capture to the model actually used, after --model/--adapter/--domain
+# resolution -- not a guessed default.
+echo "Model: $MODEL"
 echo "Review written to: $REVIEW_FILE"
 
 # --- Stage 1b: Bootstrap capture (informational, never blocks) ---
 # Feeds ~/.pi/agent/training/adversary-captures/bootstrap.jsonl for
 # pre-adapter corpus seeding. Falls back silently if the helper is
 # absent (e.g. installs without tsx available).
+#
+# ADV_NO_CAPTURE: when set (non-empty), skip the capture entirely.
+# Default behaviour (unset) is unchanged. A multi-pass driver
+# (adversary-loop.sh) sets this on intermediate iterations so only the
+# converged record lands in the corpus -- intermediate, pre-convergence
+# reviews are low quality and would dilute the training signal.
 CAPTURE_SH=""
 for c in "$(dirname "${BASH_SOURCE[0]}")/capture-review.sh" \
          "$HOME/.pi/agent/tools/capture-review.sh"; do
   if [[ -x "$c" ]]; then CAPTURE_SH="$c"; break; fi
 done
-if [[ -n "$CAPTURE_SH" ]]; then
+if [[ -n "${ADV_NO_CAPTURE:-}" ]]; then
+  echo "capture: skipped (ADV_NO_CAPTURE set)"
+elif [[ -n "$CAPTURE_SH" ]]; then
   CAPTURE_ARGS=(
     --review "$REVIEW_FILE"
     --scope  "$TARGET"

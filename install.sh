@@ -26,6 +26,7 @@
 #   tools/bash/adversary-check.sh              Mechanical baseline (no LLM)
 #   tools/bash/adversary-pass.sh               Adversary pipeline script
 #   tools/bash/adversary-scan.sh               Scope-inferring scan wrapper
+#   tools/bash/adversary-loop.sh               Bounded multi-pass review
 #   tools/bash/gen-review-revise.sh            Generate → review → revise
 #
 # Also chmod+x the in-repo server launcher (not installed elsewhere —
@@ -164,6 +165,11 @@ install_file \
   "$SCRIPT_DIR/tools/bash/adversary-scan.sh" \
   "${TOOLS_DIR}/adversary-scan.sh"
 chmod +x "${TOOLS_DIR}/adversary-scan.sh"
+
+install_file \
+  "$SCRIPT_DIR/tools/bash/adversary-loop.sh" \
+  "${TOOLS_DIR}/adversary-loop.sh"
+chmod +x "${TOOLS_DIR}/adversary-loop.sh"
 
 install_file \
   "$SCRIPT_DIR/tools/bash/capture-review.sh" \
