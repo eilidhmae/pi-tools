@@ -118,8 +118,11 @@ const CATEGORY_ALIASES: Record<string, Category> = {
   docs: "maintainability",
   documentation: "maintainability",
   naming: "maintainability",
+  complexity: "maintainability",
   injection: "security",
   auth: "security",
+  idiomatic: "idiom",
+  robustness: "error-handling",
 };
 
 // Keyed UPPERCASE because validateReview uppercases the raw verdict

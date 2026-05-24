@@ -338,6 +338,31 @@ check("bogus verdict: ok=false (not silently accepted)",
       !r11.ok, `r11.ok=${r11.ok}`);
 
 // ---------------------------------------------------------------------------
+// Test 12: category aliases for the near-miss tokens qwen3-coder emits and
+// that were stranding clean reviews in disagreements.jsonl (observed on this
+// M5 Max, 2026-05-24): idiomatic→idiom, complexity→maintainability,
+// robustness→error-handling.
+const catAliases: Array<[string, string]> = [
+  ["idiomatic", "idiom"],
+  ["complexity", "maintainability"],
+  ["robustness", "error-handling"],
+];
+for (const [raw, want] of catAliases) {
+  const yaml = "```adversary-review\n" +
+    "verdict: CONCERNS\nconfidence: medium\n" +
+    "artifact:\n  path: src/x.go\n  lines_reviewed: 1-10\n" +
+    "findings:\n" +
+    "  - id: F1\n    severity: minor\n    category: " + raw + "\n" +
+    "    file: src/x.go\n    line: 1\n    line_end: 1\n    message: trivial\n```";
+  const res = parseAdversaryReview(yaml);
+  check(`category '${raw}': ok=true`, res.ok === true,
+        `errors=${JSON.stringify(res.errors)} fatal=${res.fatal}`);
+  check(`category '${raw}' → '${want}'`,
+        res.review?.findings[0]?.category === want,
+        `got ${res.review?.findings[0]?.category}`);
+}
+
+// ---------------------------------------------------------------------------
 if (failures > 0) {
   // eslint-disable-next-line no-console
   console.error(`\n${failures} test(s) FAILED`);
