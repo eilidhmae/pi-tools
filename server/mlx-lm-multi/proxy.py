@@ -106,7 +106,12 @@ async def _forward(request: Request, path: str) -> Any:
     # Rewrite the model field to the path the backend mlx_lm.server was
     # launched with; mlx_lm.server (>=0.20) expects the request "model" field
     # to match its --model arg, and it doesn't know about our +suffix
-    # convention — the adapter is loaded at boot.
+    # convention. The adapter is meant to load at boot from --adapter-path,
+    # BUT note the upstream bug documented in HEALTH.md ("Verifying an adapter
+    # is actually applied"): mlx_lm.server's load() resolves the adapter by the
+    # remapped model path and misses, so an unpatched backend serves BASE here.
+    # Run ./verify-adapter.sh after launch — identical base-vs-adapter output
+    # means the backend needs the server.py one-line fix.
     payload["model"] = BASE_MODEL_DIR
     # Default repetition_penalty to break the F1..Fn YAML-list lock-in that
     # the bare model falls into on structured-output adversary reviews.

@@ -74,6 +74,41 @@ Reasonable budgets on a 128 GB M5 Max with the default track:
 If you change either track and break those invariants, the harness will
 silently misroute or fall back to the base model.
 
+## Verifying an adapter is actually applied (read this)
+
+`mlx_lm.server --adapter-path` can **silently serve the base model**: the
+adapter loads with no error, `/v1/models` and `/healthz` look correct, but
+generations are byte-for-byte identical to the base. Endpoint health does
+**not** catch this — only the *output* does.
+
+**Root cause** (mlx-lm `server.py`, `ModelProvider.load`): the adapter is
+resolved from `_adapter_map` *after* `model_path` has already been remapped from
+the symbolic `"default_model"` key to the real filesystem path, so the lookup
+misses and `adapter_path` falls back to `None`:
+
+```python
+model_path   = self._model_map.get(model_path, model_path)      # "default_model" -> /…/base
+adapter_path  = self._adapter_map.get(model_path, adapter_path)  # get("/…/base") -> MISS -> None
+```
+
+This bites **mlx-lm-multi specifically**: `proxy.py` rewrites every request's
+`model` field to `BASE_MODEL_DIR` before forwarding (so the `+suffix` is gone by
+the time the backend sees it), and the backend's own boot-time `load_default()`
+hits the same miss — so the per-adapter servers emit **base** output. The fix is
+a one-line reorder (resolve adapter/draft by the original request key *before*
+remapping `model_path`); patch the venv `mlx-lm` checkout until it lands
+upstream (see "Known mlx-lm server limitations" below).
+
+**Always A/B after any (re)launch — never trust `/healthz` alone:**
+
+```bash
+./mlx-lm-multi/verify-adapter.sh     # base vs each +suffix route; FAIL if identical
+```
+
+Identical base-vs-adapter output ⇒ the adapter is not applied. Skipping this
+check once produced a full "adapter" evaluation that was silently scoring the
+**base model** under each adapter's name — caught only by hashing the outputs.
+
 ## Known mlx-lm server limitations
 
 These are upstream gaps as of `mlx-lm` v0.31.3 — flags that exist on
@@ -86,5 +121,11 @@ knowing so you don't burn time looking for a CLI knob that isn't there.
   not server flags.
 - **No `--max-kv-size`.** A single runaway long-context request can't be
   capped at the server CLI today.
+- **`--adapter-path` silently no-ops** (see "Verifying an adapter is actually
+  applied" above). `ModelProvider.load` looks up the adapter by the *resolved*
+  model path instead of the request key, so it never matches. One-line fix:
+  resolve `adapter_path`/`draft_model_path` from `_adapter_map`/`_draft_model_map`
+  *before* the `model_path = self._model_map.get(...)` remap. Patch the venv
+  checkout and PR upstream; until then `verify-adapter.sh` is the guard.
 - Track upstream:
   <https://github.com/ml-explore/mlx-examples/tree/main/llms/mlx_lm>.
