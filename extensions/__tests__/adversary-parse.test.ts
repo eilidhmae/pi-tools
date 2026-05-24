@@ -306,6 +306,38 @@ check("closed fence: review.partial undefined",
       r9.review !== undefined && r9.review.partial === undefined);
 
 // ---------------------------------------------------------------------------
+// Test 10: verdict normalization. qwen3-coder-30b-a3b emits the singular
+// "CONCERN" for the mandated plural "CONCERNS" (observed on this M5 Max
+// during a pi-tools pre-push scan, 2026-05-24). Before VERDICT_ALIASES the
+// parser fataled with "verdict 'CONCERN' not in PASS|CONCERNS|FAIL" and the
+// review was dumped to disagreements.jsonl. It must now normalize to
+// CONCERNS, parse ok, and log the coercion.
+const singularVerdict = "```adversary-review\n" +
+  "verdict: CONCERN\n" +
+  "confidence: medium\n" +
+  "artifact:\n  path: src/x.go\n  sha256: deadbeefcafef00d\n  lines_reviewed: 1-10\n" +
+  "findings: []\n```";
+const r10 = parseAdversaryReview(singularVerdict);
+check("singular verdict: ok=true",
+      r10.ok === true, `errors=${JSON.stringify(r10.errors)} fatal=${r10.fatal}`);
+check("singular verdict: normalized CONCERN → CONCERNS",
+      r10.review !== undefined && r10.review.verdict === "CONCERNS",
+      `got ${r10.review?.verdict}`);
+check("singular verdict: coercion logged in errors",
+      r10.errors.some((e) => e.includes("CONCERN") && e.includes("CONCERNS")),
+      `errors=${JSON.stringify(r10.errors)}`);
+
+// A genuinely unknown verdict must still fatal — normalization is an
+// allowlist of known slips, not a blanket accept.
+const bogusVerdict = "```adversary-review\n" +
+  "verdict: MAYBE\nconfidence: low\n" +
+  "artifact:\n  path: src/x.go\n  lines_reviewed: 1-10\n" +
+  "findings: []\n```";
+const r11 = parseAdversaryReview(bogusVerdict);
+check("bogus verdict: ok=false (not silently accepted)",
+      !r11.ok, `r11.ok=${r11.ok}`);
+
+// ---------------------------------------------------------------------------
 if (failures > 0) {
   // eslint-disable-next-line no-console
   console.error(`\n${failures} test(s) FAILED`);

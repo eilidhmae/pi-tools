@@ -122,6 +122,17 @@ const CATEGORY_ALIASES: Record<string, Category> = {
   auth: "security",
 };
 
+// Keyed UPPERCASE because validateReview uppercases the raw verdict
+// before lookup (verdict canon is uppercase, unlike severity/category).
+const VERDICT_ALIASES: Record<string, Verdict> = {
+  // Observed M5 Max slip (qwen3-coder-30b-a3b): the singular "CONCERN"
+  // for the mandated plural "CONCERNS". Without this, an otherwise-clean
+  // CONCERNS review is dumped to disagreements.jsonl instead of captured
+  // as a bootstrap positive — the same corpus leak the severity/category
+  // alias maps above exist to prevent.
+  CONCERN: "CONCERNS",
+};
+
 // --- Tiny YAML subset reader ------------------------------------------------
 
 type YamlNode = string | number | boolean | YamlMap | YamlList;
@@ -306,6 +317,17 @@ function isMap(v: YamlNode | undefined): v is YamlMap {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+function normalizeVerdict(raw: string, errors: string[]): Verdict {
+  const v = raw.toUpperCase();
+  if ((ALLOWED_VERDICTS as readonly string[]).includes(v)) return v as Verdict;
+  const aliased = VERDICT_ALIASES[v];
+  if (aliased) {
+    errors.push(`verdict '${raw}' → '${aliased}'`);
+    return aliased;
+  }
+  throw new Error(`verdict '${v}' not in ${ALLOWED_VERDICTS.join("|")}`);
+}
+
 function normalizeSeverity(raw: string, errors: string[], id: string): Severity {
   const s = raw.toLowerCase();
   if ((ALLOWED_SEVERITY as readonly string[]).includes(s)) return s as Severity;
@@ -329,10 +351,7 @@ function normalizeCategory(raw: string, errors: string[], id: string): Category 
 }
 
 function validateReview(raw: YamlMap, errors: string[], salvage = false): AdversaryReview {
-  const verdict = asString(raw.verdict, "verdict").toUpperCase();
-  if (!(ALLOWED_VERDICTS as readonly string[]).includes(verdict)) {
-    throw new Error(`verdict '${verdict}' not in ${ALLOWED_VERDICTS.join("|")}`);
-  }
+  const verdict = normalizeVerdict(asString(raw.verdict, "verdict"), errors);
   const confidence = asString(raw.confidence, "confidence").toLowerCase();
   if (!(ALLOWED_CONFIDENCE as readonly string[]).includes(confidence)) {
     throw new Error(`confidence '${confidence}' not in ${ALLOWED_CONFIDENCE.join("|")}`);
