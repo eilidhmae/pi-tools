@@ -131,7 +131,7 @@ extra_pid_alive() {
 # --- preconditions ----------------------------------------------------------
 
 require_paths() {
-  [[ -d "$VENV" ]]    || die "venv missing: $VENV (run pi-tools install.sh first)"
+  [[ -d "$VENV" ]]    || die "venv missing: $VENV (run server/bootstrap-mac.sh first)"
   [[ -x "$VENV_PY" ]] || die "venv python missing: $VENV_PY"
   [[ -x "$LAUNCH" ]]  || die "launch.sh missing: $LAUNCH"
   [[ -x "$STOP" ]]    || die "stop.sh missing: $STOP"
