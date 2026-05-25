@@ -25,7 +25,10 @@ command -v jq >/dev/null || { echo "FAIL: jq required" >&2; exit 1; }
 models_json="$(curl -sS --max-time 5 "$BASE_URL/v1/models")" || {
     echo "FAIL: $BASE_URL/v1/models unreachable" >&2; exit 1; }
 
-mapfile -t MODELS < <(echo "$models_json" | jq -r '.data[].id')
+# macOS ships bash 3.2 (no `mapfile`); read the ids portably.
+MODELS=()
+while IFS= read -r _id; do [ -n "$_id" ] && MODELS+=("$_id"); done \
+    < <(echo "$models_json" | jq -r '.data[].id')
 [ "${#MODELS[@]}" -gt 0 ] || { echo "FAIL: no models listed" >&2; exit 1; }
 
 # base = the id without a '+suffix'; adapters = the rest.
@@ -50,15 +53,18 @@ base_h="$(ask "$BASE_ID")"
 rc=0
 if [ "${#ADAPTERS[@]}" -eq 0 ]; then
     echo "WARN: no +suffix adapter routes configured — nothing to verify"
+else
+    # Guarded: bash 3.2 errors on "${empty[@]}" under set -u, so only expand
+    # the array inside the non-empty branch.
+    for a in "${ADAPTERS[@]}"; do
+        h="$(ask "$a")"
+        if [ "$h" = "$base_h" ]; then
+            echo "FAIL  $a — output identical to base (adapter NOT applied; see HEALTH.md)"
+            rc=1
+        else
+            echo "OK    $a — differs from base (adapter applied)"
+        fi
+    done
 fi
-for a in "${ADAPTERS[@]}"; do
-    h="$(ask "$a")"
-    if [ "$h" = "$base_h" ]; then
-        echo "FAIL  $a — output identical to base (adapter NOT applied; see HEALTH.md)"
-        rc=1
-    else
-        echo "OK    $a — differs from base (adapter applied)"
-    fi
-done
 [ "$rc" -eq 0 ] && echo "PASS: all adapter routes apply their adapter."
 exit "$rc"
