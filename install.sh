@@ -201,18 +201,31 @@ for sh in "$SCRIPT_DIR/server/mlx-lm-multi"/*.sh "$SCRIPT_DIR/server/mola"/*.sh;
   [[ -f "$sh" ]] && chmod +x "$sh"
 done
 
-# --- Verify pi models.json has ollama and (optionally) local-mlx configured ---
+# --- Ensure pi models.json has the local-mlx provider on arm64 ---
 # Derived from PI_AGENT_DIR so --local installs land in the repo and global
 # installs land under $HOME.
+#
+# Apple Silicon is the intended target for the pi-tools harness. On arm64
+# we make sure models.json contains the local-mlx provider (merged from
+# the template if the file already exists and lacks it). The autodetect
+# previously gated this on :18080 being up at install time, but that's a
+# chicken-and-egg on a fresh box — bootstrap-mac.sh + mlx-server.sh up
+# come *after* install.sh, so the install has to configure the intended
+# target, not the observed-running state.
 MODELS_JSON="${PI_AGENT_DIR}/models.json"
 TEMPLATE="$SCRIPT_DIR/server/models.json.template"
+IS_ARM64=0
+[[ "$(uname -m)" == "arm64" ]] && IS_ARM64=1
+
 if [[ ! -f "$MODELS_JSON" ]]; then
   echo ""
-  echo "=== models.json not found at ${MODELS_JSON} — installing template (ollama + local-mlx) ==="
+  echo "=== models.json not found at ${MODELS_JSON} — installing template ==="
   mkdir -p "$(dirname "$MODELS_JSON")"
   if [[ -f "$TEMPLATE" ]]; then
     cp "$TEMPLATE" "$MODELS_JSON"
+    echo "  Created: $MODELS_JSON  (local-mlx + contrast providers)"
   else
+    # Fall through to non-arm fallback template (ollama only).
     cat > "$MODELS_JSON" <<'EOF'
 {
   "providers": {
@@ -232,47 +245,71 @@ if [[ ! -f "$MODELS_JSON" ]]; then
   }
 }
 EOF
+    echo "  Created: $MODELS_JSON  (ollama-only fallback; template missing)"
   fi
-  echo "  Created: $MODELS_JSON"
-elif ! grep -q "qwen3-coder" "$MODELS_JSON" 2>/dev/null; then
+elif [[ "$IS_ARM64" -eq 1 ]] && ! grep -q '"local-mlx"' "$MODELS_JSON" 2>/dev/null; then
   echo ""
-  echo "WARNING: $MODELS_JSON exists but does not reference qwen3-coder."
-  echo "         Add qwen3-coder:30b to the ollama provider manually if needed."
-elif ! grep -q "local-mlx" "$MODELS_JSON" 2>/dev/null; then
-  echo ""
-  echo "NOTE: $MODELS_JSON does not include the local-mlx provider."
-  echo "      To use LoRA adapters on Apple Silicon, merge the local-mlx"
-  echo "      block from: $TEMPLATE"
+  echo "=== Merging local-mlx provider into $MODELS_JSON ==="
+  rc=0
+  python3 - "$MODELS_JSON" "$TEMPLATE" <<'PYEOF' || rc=$?
+import json, sys, shutil, time, os
+target_path, template_path = sys.argv[1], sys.argv[2]
+with open(target_path) as f:
+    target = json.load(f)
+with open(template_path) as f:
+    template = json.load(f)
+if not isinstance(target, dict):
+    print(f"  SKIP: {target_path} is not a JSON object")
+    sys.exit(2)
+target.setdefault("providers", {})
+if not isinstance(target["providers"], dict):
+    print(f"  SKIP: {target_path}.providers is not an object")
+    sys.exit(2)
+# Only merge the primary local-mlx provider. Contrast providers
+# (local-mlx-codestral, local-mlx-dscoder) require extra-models to be
+# configured first and are added by the operator if/when wanted.
+if "local-mlx" in template.get("providers", {}) and "local-mlx" not in target["providers"]:
+    target["providers"]["local-mlx"] = template["providers"]["local-mlx"]
+    backup = f"{target_path}.bak.{int(time.time())}"
+    shutil.copy2(target_path, backup)
+    with open(target_path, "w") as f:
+        json.dump(target, f, indent=2)
+        f.write("\n")
+    print(f"  Added: local-mlx provider")
+    print(f"  Backup: {backup}")
+else:
+    print("  Nothing to merge (template missing local-mlx, or already present)")
+    sys.exit(3)
+PYEOF
+  case "$rc" in
+    0|3) : ;;  # 0 = merged, 3 = already present — both fine
+    *) echo "  WARNING: merge failed (python3 exit $rc); inspect $MODELS_JSON manually" ;;
+  esac
 fi
 
-# --- Apple Silicon + local-mlx autodetect: seed default provider/model ---
+# --- Apple Silicon default provider/model ---
 #
-# pi 0.74.0's model resolver (core/model-resolver.js findInitialModel) falls
-# through to "first available model" when no CLI flags, --models scoping, or
-# settings.json defaults match. Neither `ollama` nor `local-mlx` are in pi's
-# hardcoded defaultModelPerProvider list, so the first available model is
-# picked by iteration order — landing on whichever provider is declared first
-# in models.json (almost always `ollama` per the template). That gives
-# `pi /adversary-review` and similar prompt commands a 404 when ollama doesn't
-# have `qwen3-coder:30b` pulled, even on machines where the whole rest of the
-# harness expects local-mlx.
+# pi 0.74.0's model resolver (core/model-resolver.js findInitialModel)
+# falls through to "first available model" when no CLI flags, --models
+# scoping, or settings.json defaults match. Neither `ollama` nor
+# `local-mlx` are in pi's hardcoded defaultModelPerProvider list, so the
+# default is decided by models.json declaration order — historically
+# ollama-first, which is the wrong target on arm64.
 #
-# Seed settings.json with the explicit defaults when:
-#   - arch is arm64 (Apple Silicon), AND
-#   - localhost:18080/v1/models responds within 1s (local-mlx server up).
-# Existing defaultProvider/defaultModel values are preserved (never clobber
-# operator config); other settings.json keys are merged through untouched.
+# On arm64 we set defaultProvider=local-mlx + defaultModel=qwen3-coder-30b-a3b.
+# We do clobber a pre-existing `ollama` default (because that's exactly
+# the wrong-default bug we're fixing), but we leave any other explicit
+# defaultProvider value alone so operators can pin a different target.
+# Set PI_TOOLS_KEEP_DEFAULTS=1 to suppress the rewrite entirely.
 SETTINGS_JSON="${PI_AGENT_DIR}/settings.json"
-if [[ "$(uname -m)" == "arm64" ]] && \
-   curl -fs --max-time 1 http://localhost:18080/v1/models >/dev/null 2>&1; then
-  # `|| rc=$?` so `set -e` doesn't abort on the expected exit 2 path
-  # (settings.json already has defaults the operator wants preserved).
+if [[ "$IS_ARM64" -eq 1 ]] && [[ -z "${PI_TOOLS_KEEP_DEFAULTS:-}" ]]; then
   rc=0
   python3 - "$SETTINGS_JSON" <<'PYEOF' || rc=$?
-import json, os, sys
+import json, os, sys, shutil, time
 path = sys.argv[1]
 data = {}
-if os.path.exists(path):
+existed = os.path.exists(path)
+if existed:
     try:
         with open(path) as f:
             data = json.load(f)
@@ -280,25 +317,38 @@ if os.path.exists(path):
             data = {}
     except Exception:
         data = {}
-if data.get("defaultProvider") or data.get("defaultModel"):
+current_provider = data.get("defaultProvider")
+current_model = data.get("defaultModel")
+# Overwrite when:
+#   - no defaults are set, OR
+#   - defaults currently point at ollama (the wrong-target bug).
+# Leave any other explicit value alone.
+ollama_defaults = {None, "", "ollama"}
+provider_ok_to_overwrite = current_provider in ollama_defaults
+model_ok_to_overwrite = current_model in ollama_defaults | {"qwen3-coder", "qwen3-coder:30b", "qwen3-coder-next"}
+if not (provider_ok_to_overwrite and model_ok_to_overwrite):
+    print(f"  NOTE: {path} has non-ollama defaults (provider={current_provider!r}, model={current_model!r}); leaving as-is.")
+    print("        Set PI_TOOLS_KEEP_DEFAULTS=1 to silence; delete the keys to force overwrite.")
     sys.exit(2)
+if existed:
+    backup = f"{path}.bak.{int(time.time())}"
+    shutil.copy2(path, backup)
+    print(f"  Backup: {backup}")
 data["defaultProvider"] = "local-mlx"
 data["defaultModel"] = "qwen3-coder-30b-a3b"
 os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
+print(f"  Set: defaultProvider=local-mlx, defaultModel=qwen3-coder-30b-a3b")
 PYEOF
   case "$rc" in
     0)
       echo ""
-      echo "=== Seeded default provider/model in $SETTINGS_JSON ==="
-      echo "    local-mlx + qwen3-coder-30b-a3b (Apple Silicon + local-mlx reachable)."
+      echo "=== Updated $SETTINGS_JSON for Apple Silicon ==="
       ;;
     2)
-      echo ""
-      echo "NOTE: $SETTINGS_JSON already sets defaultProvider/defaultModel — leaving as-is."
-      ;;
+      : ;;  # python already printed the note
     *)
       echo ""
       echo "WARNING: could not update $SETTINGS_JSON (python3 exit $rc); skipping."
