@@ -98,19 +98,23 @@ process with its own copy of the 4-bit base model (~16 GB resident). Adapters
 do **not** share base weights across processes in the default `mlx-lm-multi`
 track. `mola` does share, but is flagged alpha in `server/HEALTH.md:12-24`.
 
-Realistic budget on M2 Max 32 GB:
+**Measured on M2 Max 32 GB (after the full bring-up):** base
+`mlx_lm.server` resident size is **~11 GB** at idle, not the ~16 GB
+estimated from disk-image size. KV cache grows it under load; the
+proxy process adds <50 MB. That changes the envelope:
 
 | Configuration | Resident MLX | Headroom for OS+pi+browser+IDE | Verdict |
 |---|---|---|---|
-| Base only (`adapters.conf` empty) | ~16 GB | ~16 GB | comfortable |
-| Base + 1 adapter | ~32 GB | ~0 GB | swap, decode collapse |
-| Base + 2 adapters | ~48 GB | impossible | impossible |
-| Any `extra-models` row | +~16 GB each | impossible alongside base | impossible |
-| `mola` track (single process, multi-adapter) | ~16 GB | ~16 GB | feasible but alpha |
+| Base only (`adapters.conf` empty) | ~11 GB | ~21 GB | comfortable |
+| Base + 1 adapter | ~22 GB | ~10 GB | **feasible** (tighter under load) |
+| Base + 2 adapters | ~33 GB | none | swap, decode collapse |
+| Any `extra-models` row | +~11 GB each | depends | OK only if base is the only other |
+| `mola` track (single process, multi-adapter) | ~11 GB | ~21 GB | feasible but alpha |
 
-Practical M2 Max 32 GB envelope: **base-only**, no enabled adapter rows, no
-contrast models. If a single adapter is essential, it must replace the base
-mentally (you can't run both at once for long).
+Practical M2 Max 32 GB envelope: **base + at most one adapter**, no
+contrast models running alongside. Stay alert to KV-cache growth on
+long-context requests — a 262K-token request can push per-process
+resident well above the idle 11 GB.
 
 Bandwidth is **not** a bottleneck — M2 Max has the same memory bandwidth class
 as M5 Max (~400 GB/s), so decode tok/s should be in the same ballpark as the
@@ -173,19 +177,39 @@ nudge.
 - `install.sh`'s Apple-Silicon autodetect block — already idempotent and respects
   existing user settings; safe on M2 as-is.
 
-## Verification not performed
+## Verification performed (M2 Max / 32 GB / macOS 26.5)
 
-I deliberately did **not** run `server/bootstrap-mac.sh` during this pass because
-it would download ~16 GB of model weights and build llama.cpp from source.
-Recommend the user run it (or a slimmer M2 version of it) themselves to validate
-the full bring-up. End-to-end checks still pending:
+After the change set landed on the `m2-max-32gb` branch:
 
-- `bash server/bootstrap-mac.sh` completes on M2 Max 32 GB.
-- `bash server/mlx-server.sh up` brings up the base process; resident memory ≈ 16 GB
-  (confirm via Activity Monitor or `vm_stat`).
-- `curl localhost:18080/v1/models` returns `qwen3-coder-30b-a3b`.
-- `pi /adversary-review` against a small file produces a structured verdict.
-- Quorum cycle (force a CONCERNS verdict) completes within ~4 min with no
-  second `mlx_lm.server` process spawned.
-- A single adapter row in `adapters.conf` brings resident memory to ~32 GB
-  and confirms the predicted M2 ceiling.
+- ✅ `bash server/bootstrap-mac.sh` completed in one shot. Cloned mlx-lm,
+  fetched PR #1277 and PR #1249 via `+refs/pull/N/head`, merged both
+  cleanly onto `origin/main` into branch `pi-tools-patched`, editable-
+  installed into `~/.pi/agent/venv`. Sanity check confirmed `mlx_lm`
+  imports resolve to `/Users/erobey/src/mlx-lm/mlx_lm` (patched build,
+  not pypi).
+- ✅ `~/models/Qwen3-Coder-30B-A3B-Instruct-4bit/` is 16 GB on disk.
+- ✅ `bash server/mlx-server.sh up` brought up base + proxy in ≈30 s.
+- ✅ `mlx-server.sh status` shows both listeners (`18080` proxy +
+  `18090` base); no more "run install.sh first" misdirection.
+- ✅ `curl localhost:18080/healthz` → `{ok: true, track: mlx-lm-multi,
+  adapters: [{suffix: base, port: 18090, ok: true}]}`.
+- ✅ `curl localhost:18080/v1/models` returns `qwen3-coder-30b-a3b`.
+- ✅ Completion request (`/v1/chat/completions`, "Say only the word
+  PASS", `max_tokens=10`, `temperature=0`) returned `PASS` with
+  `finish_reason: stop` in 2.3 s wall (most of which was prompt
+  prefill; decode itself is sub-second for 2 tokens).
+- ✅ Resident memory of `mlx_lm.server`: **10.9 GB** at idle.
+- ✅ `adversary-pass.sh /tmp/anything` without `:18080`: falls back to
+  ollama with a NOTE.
+- ✅ `PI_TOOLS_NO_OLLAMA_FALLBACK=1 adversary-pass.sh ...` without
+  `:18080`: hard-fails with exit 2 and the correct guidance.
+
+Still not exercised in this pass:
+
+- `pi /adversary-review` end-to-end through pi (the smoke check above
+  hits the proxy directly; pi adds its own routing + skill autoload).
+- Quorum cycle (force a CONCERNS verdict) — no behavioral change in
+  this branch, just want to confirm 32 GB headroom holds during the
+  +120 s peer session.
+- One adapter row uncommented in `adapters.conf` — would confirm
+  the predicted ~22 GB resident ceiling.
