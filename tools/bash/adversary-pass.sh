@@ -22,7 +22,11 @@
 #   --model      Model id. Default is auto-detected: on Apple Silicon
 #                with a local-mlx server reachable on localhost:18080,
 #                "qwen3-coder-30b-a3b" via local-mlx; otherwise
-#                "qwen3-coder:30b" via ollama (legacy path).
+#                "qwen3-coder:30b" via ollama. Set
+#                PI_TOOLS_NO_OLLAMA_FALLBACK=1 to refuse the ollama
+#                fallback on arm64 (recommended for training-data work,
+#                where corpus contamination from a fallback model is
+#                a real concern -- see notes near the gate below).
 #   --provider   Provider id from models.json. Default auto-detected
 #                alongside --model (see above).
 #   --adapter    Shorthand: --provider local-mlx --model qwen3-coder-30b-a3b+adversary.
@@ -42,7 +46,8 @@
 #   This script invokes pi with all autoloads OFF and supplies the skill
 #   via --append-system-prompt; the target's content (file or diff) is
 #   inlined into the user prompt because the model has no tool access.
-#   See ~/src/my-macbook/OPERATIONS.md and decision 2026-05-14 for why.
+#   See operator notes from 2026-05-14 for why (decision lives outside
+#   this repo; the short version is "autoloaded tools confuse pi -p").
 #
 # Always exits 0 (informational, not a gate).
 
@@ -53,27 +58,37 @@ REVISE=0
 QUORUM=0
 
 # --- Auto-detect default provider/model ---
-# On Apple Silicon the default is local-mlx + qwen3-coder-30b-a3b
-# (the M5 Max / GRAIL target path). If localhost:18080 is unreachable
-# we fail LOUDLY rather than silently falling back to a different
-# backend -- corpus contamination from a fallback model (different
-# weights, different verdicts) is worse than a noisy abort. The
-# ollama fallback was removed on 2026-05-16 after a salvage-batch
-# silently produced records labelled ollama/qwen3-coder:30b when
-# the local-mlx probe momentarily failed.
-# On non-Apple platforms the legacy ollama fallback still applies.
-# --provider / --model / --adapter / --domain flags override this.
+# Preferred path on Apple Silicon: local-mlx + qwen3-coder-30b-a3b
+# served from this repo's MLX stack. If localhost:18080 is unreachable
+# we fall back to ollama + qwen3-coder:30b by default, so consumers
+# who haven't brought up the MLX stack still get a working pipeline.
+#
+# Opt out with PI_TOOLS_NO_OLLAMA_FALLBACK=1 -- the corpus-contamination
+# concern that originally banned the fallback (2026-05-16: a salvage
+# batch silently emitted records labelled ollama/qwen3-coder:30b when
+# the local-mlx probe transiently failed) still applies for anyone
+# generating training data, so set the env var in those workflows.
+#
+# --provider / --model / --adapter / --domain flags override both
+# the local-mlx default and the fallback.
 if [[ "$(uname -m)" == "arm64" ]]; then
   MODEL="qwen3-coder-30b-a3b"
   PROVIDER="local-mlx"
   if ! curl -fs --max-time 3 http://localhost:18080/v1/models >/dev/null 2>&1; then
-    echo "ERROR: default backend http://localhost:18080 unreachable on"  >&2
-    echo "       Apple Silicon. Bring it up with:"                        >&2
-    echo "         ~/src/my-macbook/mlx-server.sh up base"                >&2
-    echo "       Or pass an explicit --provider / --model to bypass."     >&2
-    echo "       (No ollama fallback on arm64; removed 2026-05-16 after"  >&2
-    echo "       a corpus-contamination incident -- see DECISIONS.md.)"   >&2
-    exit 2
+    if [[ -n "${PI_TOOLS_NO_OLLAMA_FALLBACK:-}" ]]; then
+      echo "ERROR: default backend http://localhost:18080 unreachable on" >&2
+      echo "       Apple Silicon and PI_TOOLS_NO_OLLAMA_FALLBACK is set." >&2
+      echo "       Bring up the MLX stack from your pi-tools checkout:"   >&2
+      echo "         bash <pi-tools>/server/mlx-server.sh up"             >&2
+      echo "       Or unset PI_TOOLS_NO_OLLAMA_FALLBACK to fall back to"  >&2
+      echo "       ollama + qwen3-coder:30b."                             >&2
+      exit 2
+    fi
+    echo "NOTE: local-mlx :18080 unreachable; falling back to ollama"     >&2
+    echo "      qwen3-coder:30b. Set PI_TOOLS_NO_OLLAMA_FALLBACK=1 to"    >&2
+    echo "      refuse the fallback (use for training-data runs)."        >&2
+    MODEL="qwen3-coder:30b"
+    PROVIDER="ollama"
   fi
 else
   MODEL="qwen3-coder:30b"

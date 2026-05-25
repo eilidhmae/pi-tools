@@ -13,21 +13,24 @@
 #   --force, -y          Skip overwrite prompts
 #   --help, -h           Show this help
 #
-# Components installed:
+# Components installed (source path → install path under $PI_AGENT_DIR,
+# which is ~/.pi/agent/ in global mode and <repo>/.pi/agent/ in --local
+# mode; shell scripts go to $PI_AGENT_DIR/tools/ in global mode and
+# <repo>/tools/bash/ in --local mode):
 #
-#   AGENTS.md                                  Shared rules (→ AGENTS.md)
-#   skills/adversary/SKILL.md                  /skill:adversary
-#   skills/manager/SKILL.md                    /skill:manager
-#   skills/orchestrator/SKILL.md               /skill:orchestrator
-#   skills/worker/SKILL.md                     /skill:worker
-#   prompts/adversary-review.md                /adversary-review command
-#   extensions/adversary-hook.ts               PostWrite mechanical check
-#   extensions/quorum.ts                       Adversary quorum orchestrator
-#   tools/bash/adversary-check.sh              Mechanical baseline (no LLM)
-#   tools/bash/adversary-pass.sh               Adversary pipeline script
-#   tools/bash/adversary-scan.sh               Scope-inferring scan wrapper
-#   tools/bash/adversary-loop.sh               Bounded multi-pass review
-#   tools/bash/gen-review-revise.sh            Generate → review → revise
+#   AGENTS.md                                  → AGENTS.md
+#   skills/<name>/SKILL.md                     → skills/<name>/SKILL.md  (/skill:<name>)
+#   prompts/adversary-review.md                → prompts/adversary-review.md  (/adversary-review)
+#   extensions/adversary-hook.ts               → extensions/adversary-hook.ts  (PostWrite check)
+#   extensions/quorum.ts                       → extensions/quorum.ts  (adversary quorum)
+#   extensions/lib/*.ts                        → extensions/lib/*.ts  (helper modules)
+#   tools/bash/adversary-check.sh              → tools/adversary-check.sh
+#   tools/bash/adversary-pass.sh               → tools/adversary-pass.sh
+#   tools/bash/adversary-scan.sh               → tools/adversary-scan.sh
+#   tools/bash/adversary-loop.sh               → tools/adversary-loop.sh
+#   tools/bash/capture-review.sh               → tools/capture-review.sh
+#   tools/bash/gen-review-revise.sh            → tools/gen-review-revise.sh
+#   tools/ts/capture-review.ts                 → tools/ts/capture-review.ts
 #
 # Also chmod+x the in-repo server launcher (not installed elsewhere —
 # invoke it directly from the pi-tools checkout):
@@ -331,9 +334,11 @@ echo "   /skill:manager             # manager coordination session"
 echo "   /skill:orchestrator        # orchestrator session"
 echo "   /skill:worker              # worker implementation session"
 echo ""
-echo "   adversary-pass.sh <file>          # headless adversary pipeline"
-echo "   adversary-pass.sh <file> --quorum # with manual quorum"
-echo "   gen-review-revise.sh <spec.md>    # full generate→review→revise"
+echo "   ${TOOLS_DIR}/adversary-pass.sh <file>          # headless adversary pipeline"
+echo "   ${TOOLS_DIR}/adversary-pass.sh <file> --quorum # with manual quorum"
+echo "   ${TOOLS_DIR}/gen-review-revise.sh <spec.md>    # full generate→review→revise"
+echo ""
+echo "   (Add ${TOOLS_DIR} to PATH in your shell rc to invoke by bare name.)"
 echo ""
 echo " Server stack control (run from the pi-tools checkout):"
 echo "   bash $SCRIPT_DIR/server/mlx-server.sh up      # Qwen + extras"
