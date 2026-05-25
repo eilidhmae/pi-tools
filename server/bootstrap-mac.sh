@@ -56,12 +56,15 @@ RAM_GB=$(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))
 say "Detected $RAM_GB GB unified memory."
 if (( RAM_GB < 64 )); then
     warn "32 GB-class host. Recommended profile:"
-    warn "  - adapters.conf: leave empty (each row adds ~16 GB resident)"
-    warn "  - extra-models/config.conf: leave empty (same reason)"
-    warn "  - quorum: fine (sequential HTTP, no extra processes)"
+    warn "  - adapters.conf: at most 1 row enabled. Measured per-process"
+    warn "    resident on M2 Max: ~11 GB at idle (grows with KV cache)."
+    warn "    Base + 1 adapter ≈ 22 GB resident; 2+ adapters will swap."
+    warn "  - extra-models/config.conf: leave empty (each row is another"
+    warn "    independent ~11 GB process)."
+    warn "  - quorum: fine (sequential HTTP, no extra processes)."
     warn "  - mola track: experimental — base shared in-process, lower"
     warn "    memory ceiling than mlx-lm-multi but flagged alpha in"
-    warn "    server/HEALTH.md"
+    warn "    server/HEALTH.md."
 fi
 
 # 1. Homebrew baseline
