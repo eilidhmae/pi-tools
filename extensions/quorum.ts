@@ -23,7 +23,9 @@
  * Dependencies:
  *   - pi must be in PATH (used for RPC subprocess spawning)
  *   - ~/.pi/agent/skills/adversary/SKILL.md must exist
- *   - qwen3-coder:30b via ollama (configurable below)
+ *   - a reachable peer model: on Apple Silicon the default is
+ *     qwen3-coder-30b-a3b+adversary via local-mlx; non-Apple defaults
+ *     to qwen3-coder:30b via ollama (configurable below)
  */
 
 import { spawn } from "child_process";
@@ -38,8 +40,17 @@ import { captureFromQuorum, ReviewerOutput } from "./lib/adversary-capture";
 // Heterogeneous quorum (new): PI_QUORUM_MODELS="qwen3-coder:30b@ollama,qwen3-coder-30b-a3b+adversary@local-mlx"
 //                             temperatures parallel CSV (defaults shown):
 //                             PI_QUORUM_TEMPS="0.2,0.5,0.7"
-const LEGACY_MODEL = process.env.PI_QUORUM_MODEL ?? "qwen3-coder:30b";
-const LEGACY_PROVIDER = process.env.PI_QUORUM_PROVIDER ?? "ollama";
+//
+// Default provider/model are arch-aware: on Apple Silicon the harness
+// runs local-mlx (ollama serves the same base model via a different
+// runtime and can't load the per-role adapters, so it would only
+// mislabel peer output). Non-Apple keeps the legacy ollama path. The
+// env vars above still override.
+const IS_APPLE_SILICON = process.arch === "arm64";
+const DEFAULT_PROVIDER = IS_APPLE_SILICON ? "local-mlx" : "ollama";
+const DEFAULT_MODEL = IS_APPLE_SILICON ? "qwen3-coder-30b-a3b+adversary" : "qwen3-coder:30b";
+const LEGACY_MODEL = process.env.PI_QUORUM_MODEL ?? DEFAULT_MODEL;
+const LEGACY_PROVIDER = process.env.PI_QUORUM_PROVIDER ?? DEFAULT_PROVIDER;
 const MODELS_RAW = process.env.PI_QUORUM_MODELS ?? "";
 const TEMPS_RAW = process.env.PI_QUORUM_TEMPS ?? "0.2,0.5,0.7";
 const PEER_TIMEOUT_MS = 120_000;
@@ -61,7 +72,7 @@ function peerRoster(): Peer[] {
     const [model, provider] = entries[i].split("@");
     out.push({
       model,
-      provider: provider ?? "ollama",
+      provider: provider ?? DEFAULT_PROVIDER,
       temperature: temps[i] ?? temps[temps.length - 1] ?? 0.2,
     });
   }
