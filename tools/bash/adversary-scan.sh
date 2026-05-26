@@ -27,8 +27,12 @@
 #                        one backend gives queue depth, not parallelism;
 #                        true parallelism needs N backend processes,
 #                        which is a Phase 2+ concern).
-#   --provider <name>    Pi provider id (default: ollama).
-#   --model <id>         Pi model id (default: qwen3-coder:30b).
+#   --provider <name>    Pi provider id. Default inherited from
+#                        adversary-pass.sh (local-mlx on Apple Silicon;
+#                        ollama on non-Apple platforms).
+#   --model <id>         Pi model id. Default inherited from
+#                        adversary-pass.sh (qwen3-coder-30b-a3b on Apple
+#                        Silicon; qwen3-coder:30b on non-Apple).
 #   --adapter / --domain Same shorthands as adversary-pass.sh.
 #
 # Scope rules:

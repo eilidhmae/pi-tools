@@ -19,14 +19,13 @@
 #                interactive pi mode that this script intentionally avoids.
 #                The revise pass is a best-effort passthrough and may not
 #                work headless in pi 0.74.0; see OPERATIONS.md.
-#   --model      Model id. Default is auto-detected: on Apple Silicon
-#                with a local-mlx server reachable on localhost:18080,
-#                "qwen3-coder-30b-a3b" via local-mlx; otherwise
-#                "qwen3-coder:30b" via ollama. Set
-#                PI_TOOLS_NO_OLLAMA_FALLBACK=1 to refuse the ollama
-#                fallback on arm64 (recommended for training-data work,
-#                where corpus contamination from a fallback model is
-#                a real concern -- see notes near the gate below).
+#   --model      Model id. Default is auto-detected: on Apple Silicon,
+#                "qwen3-coder-30b-a3b" via local-mlx. The MLX stack must
+#                be reachable on localhost:18080 -- if it isn't, the
+#                script aborts (there is no ollama fallback on arm64;
+#                bring the stack up with server/mlx-server.sh up). On
+#                non-Apple platforms, "qwen3-coder:30b" via ollama
+#                (legacy path).
 #   --provider   Provider id from models.json. Default auto-detected
 #                alongside --model (see above).
 #   --adapter    Shorthand: --provider local-mlx --model qwen3-coder-30b-a3b+adversary.
@@ -58,37 +57,30 @@ REVISE=0
 QUORUM=0
 
 # --- Auto-detect default provider/model ---
-# Preferred path on Apple Silicon: local-mlx + qwen3-coder-30b-a3b
-# served from this repo's MLX stack. If localhost:18080 is unreachable
-# we fall back to ollama + qwen3-coder:30b by default, so consumers
-# who haven't brought up the MLX stack still get a working pipeline.
-#
-# Opt out with PI_TOOLS_NO_OLLAMA_FALLBACK=1 -- the corpus-contamination
-# concern that originally banned the fallback (2026-05-16: a salvage
-# batch silently emitted records labelled ollama/qwen3-coder:30b when
-# the local-mlx probe transiently failed) still applies for anyone
-# generating training data, so set the env var in those workflows.
-#
-# --provider / --model / --adapter / --domain flags override both
-# the local-mlx default and the fallback.
+# On Apple Silicon the default is local-mlx + qwen3-coder-30b-a3b (the
+# MLX stack this repo brings up). If localhost:18080 is unreachable we
+# fail LOUDLY rather than silently falling back to a different backend:
+# corpus contamination from a fallback model -- different weights →
+# different verdicts, silently mislabelled -- is worse than a noisy
+# abort. The ollama fallback was removed on 2026-05-16 after a salvage
+# batch quietly emitted records labelled ollama/qwen3-coder:30b when the
+# local-mlx probe transiently failed. ollama has no role on Apple
+# Silicon anyway: it serves the same base model via a different runtime
+# and can't load the per-role LoRA adapters this harness is built on.
+# On non-Apple platforms the legacy ollama path still applies.
+# --provider / --model / --adapter / --domain flags override this.
 if [[ "$(uname -m)" == "arm64" ]]; then
   MODEL="qwen3-coder-30b-a3b"
   PROVIDER="local-mlx"
   if ! curl -fs --max-time 3 http://localhost:18080/v1/models >/dev/null 2>&1; then
-    if [[ -n "${PI_TOOLS_NO_OLLAMA_FALLBACK:-}" ]]; then
-      echo "ERROR: default backend http://localhost:18080 unreachable on" >&2
-      echo "       Apple Silicon and PI_TOOLS_NO_OLLAMA_FALLBACK is set." >&2
-      echo "       Bring up the MLX stack from your pi-tools checkout:"   >&2
-      echo "         bash <pi-tools>/server/mlx-server.sh up"             >&2
-      echo "       Or unset PI_TOOLS_NO_OLLAMA_FALLBACK to fall back to"  >&2
-      echo "       ollama + qwen3-coder:30b."                             >&2
-      exit 2
-    fi
-    echo "NOTE: local-mlx :18080 unreachable; falling back to ollama"     >&2
-    echo "      qwen3-coder:30b. Set PI_TOOLS_NO_OLLAMA_FALLBACK=1 to"    >&2
-    echo "      refuse the fallback (use for training-data runs)."        >&2
-    MODEL="qwen3-coder:30b"
-    PROVIDER="ollama"
+    echo "ERROR: default backend http://localhost:18080 unreachable on"  >&2
+    echo "       Apple Silicon. Bring it up with:"                        >&2
+    echo "         bash <pi-tools>/server/mlx-server.sh up"               >&2
+    echo "       Or pass an explicit --provider / --model to bypass."     >&2
+    echo "       (No ollama fallback on arm64: same model, different"     >&2
+    echo "       runtime, can't load adapters, and contaminates the"      >&2
+    echo "       corpus -- removed 2026-05-16.)"                          >&2
+    exit 2
   fi
 else
   MODEL="qwen3-coder:30b"

@@ -224,8 +224,32 @@ if [[ ! -f "$MODELS_JSON" ]]; then
   if [[ -f "$TEMPLATE" ]]; then
     cp "$TEMPLATE" "$MODELS_JSON"
     echo "  Created: $MODELS_JSON  (local-mlx + contrast providers)"
+  elif [[ "$IS_ARM64" -eq 1 ]]; then
+    # Template missing on arm64: write a minimal local-mlx config, not the
+    # ollama-only fallback. ollama has no role on Apple Silicon (same base
+    # model via a different runtime, can't load the per-role adapters).
+    cat > "$MODELS_JSON" <<'EOF'
+{
+  "providers": {
+    "local-mlx": {
+      "baseUrl": "http://localhost:18080/v1",
+      "api": "openai-completions",
+      "apiKey": "local",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        { "id": "qwen3-coder-30b-a3b",           "name": "Qwen3-Coder 30B-A3B (base)",      "contextWindow": 262144 },
+        { "id": "qwen3-coder-30b-a3b+adversary", "name": "Qwen3-Coder 30B-A3B + Adversary", "contextWindow": 262144 }
+      ]
+    }
+  }
+}
+EOF
+    echo "  Created: $MODELS_JSON  (minimal local-mlx; template missing)"
   else
-    # Fall through to non-arm fallback template (ollama only).
+    # Non-Apple, template missing: ollama-only fallback.
     cat > "$MODELS_JSON" <<'EOF'
 {
   "providers": {

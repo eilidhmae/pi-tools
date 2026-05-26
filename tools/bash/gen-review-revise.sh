@@ -35,12 +35,14 @@ SPEC="${1:?Usage: gen-review-revise.sh <spec.md> [--revise] [--model <model>]}"
 REVISE=0
 
 # --- Auto-detect default provider/model ---
-# On Apple Silicon with a local-mlx server reachable on localhost:18080,
-# prefer local-mlx + qwen3-coder-30b-a3b. Otherwise fall back to
-# qwen3-coder:30b via ollama (legacy default).
+# On Apple Silicon the default is local-mlx + qwen3-coder-30b-a3b. We do
+# NOT fall back to ollama when localhost:18080 is down: ollama serves the
+# same base model via a different runtime and can't load the per-role
+# adapters, so a fallback would only mislabel output (see adversary-pass.sh).
+# Bring the MLX stack up with server/mlx-server.sh up. On non-Apple
+# platforms the legacy ollama default applies.
 # --provider / --model / --domain flags override this.
-if [[ "$(uname -m)" == "arm64" ]] && \
-   curl -fs --max-time 1 http://localhost:18080/v1/models >/dev/null 2>&1; then
+if [[ "$(uname -m)" == "arm64" ]]; then
   MODEL="qwen3-coder-30b-a3b"
   PROVIDER="local-mlx"
 else
@@ -71,6 +73,18 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+# If the (possibly overridden) provider is local-mlx, make sure the MLX
+# stack is up before the worker stage burns time. Fail early with an
+# instructive message rather than a cryptic pi connection error (mirrors
+# adversary-pass.sh). Explicit non-local-mlx overrides skip this.
+if [[ "$PROVIDER" == "local-mlx" ]] && \
+   ! curl -fs --max-time 3 http://localhost:18080/v1/models >/dev/null 2>&1; then
+  echo "ERROR: local-mlx backend http://localhost:18080 unreachable."     >&2
+  echo "       Bring it up with: bash <pi-tools>/server/mlx-server.sh up"  >&2
+  echo "       Or pass --provider / --model to use a different backend."   >&2
+  exit 2
+fi
 
 # Build the adversary invocation flags once. Default: inherit the
 # worker's provider/model (Ollama-friendly). Opt-in: --adapter, which
