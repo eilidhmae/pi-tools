@@ -222,10 +222,48 @@ that don't match reality. List each failure with file:line reference.
 
 ## Output Format
 
-Two parts. The prose summary is for humans. The fenced YAML block is
-machine-parsed and feeds the adversary-general training pipeline (see
-`extensions/lib/adversary-parse.ts` and `extensions/lib/adversary-capture.ts`).
+Two parts: a fenced ```adversary-review``` YAML block and a prose summary.
 Both must be present.
+
+- **Generate the YAML block first**, then write the prose summary by
+  reading off your own YAML. The prose is a human-readable rendering of
+  the YAML; it is not an independent judgement.
+- Both sections must agree. The single most common drift this output
+  suffers is: YAML lists findings of category X, but prose `### X`
+  still says "No issues found." That is a contradiction, not a style
+  choice. If a finding of category X exists in `findings:`, the matching
+  prose section (see mapping table below) MUST reference it by `F<id>`
+  with a one-line summary and MUST NOT use the "no issues" / "none" /
+  "All ... verified" boilerplate.
+- The fenced `adversary-review` YAML block is the machine-parsed source
+  of truth and feeds the adversary-general training pipeline (parser:
+  `extensions/lib/adversary-parse.ts`; capture:
+  `extensions/lib/adversary-capture.ts`).
+
+#### Category → prose section mapping
+
+When a finding of the given YAML `category` exists, the matching prose
+section MUST reference it (by id and one-line summary) instead of the
+"no issues" boilerplate. This mapping is mirrored by
+`tools/ts/drift-check.ts`, which runs post-generation and appends a
+`## Pipeline Drift Warning` block to the review file if any expected
+section is still boilerplate — keep the two in lockstep.
+
+| YAML category      | Prose section(s) where it MUST appear     |
+| ------------------ | ----------------------------------------- |
+| security           | ### Security                              |
+| race-condition     | ### Operational Robustness                |
+| error-handling     | ### Operational Robustness                |
+| resource-leak      | ### Operational Robustness                |
+| correctness        | ### Operational Robustness                |
+| performance        | ### Complexity Audit                      |
+| maintainability    | ### Complexity Audit                      |
+| idiom              | ### Complexity Audit                      |
+
+A finding may also be summarised in additional sections (e.g. an
+assumption-driven correctness bug can appear in both Operational
+Robustness and Assumptions), but it must appear in at least the
+mapped section above.
 
 ### Prose summary (for humans)
 
@@ -236,17 +274,23 @@ Both must be present.
 **Mechanical checks**: [summary of adversary-check.sh output or manual equivalent]
 
 ### Operational Robustness
-[per-class findings, or "none" per class — partial-failure, idempotency,
-opt-in/contract, error-message quality, comparison/parsing, init/config paths]
+[per-class findings — for each YAML finding with category in
+{race-condition, error-handling, resource-leak, correctness}, write
+"F<id>: <one-line>" under the matching class (partial-failure,
+idempotency, opt-in/contract, error-message quality, comparison/parsing,
+init/config paths); write "none" only for classes with no matching
+YAML finding]
 
 ### Claim Verification
-[findings or "All claims verified"]
+[for each YAML finding that contradicts a worker claim, write
+"F<id>: <one-line>"; otherwise "All claims verified"]
 
 ### Test Verification
 [findings]
 
 ### Complexity Audit
-[findings or "Complexity is proportional"]
+[for each YAML finding with category in {performance, maintainability,
+idiom}, write "F<id>: <one-line>"; otherwise "Complexity is proportional"]
 
 ### Scope Check
 [findings or "No scope creep detected"]
@@ -258,7 +302,8 @@ opt-in/contract, error-message quality, comparison/parsing, init/config paths]
 [list of assumptions found]
 
 ### Security
-[findings or "No issues found"]
+[for each YAML finding with category: security, write "F<id>: <one-line>";
+otherwise "No issues found"]
 
 ### Quorum
 [omit if verdict is PASS; populated by quorum.ts with peer verdicts]
@@ -363,6 +408,10 @@ mechanical_baseline:
 - If a finding spans multiple files, emit it as separate findings — one
   per file, sharing the same category and message.
 - Findings list MUST be `[]` (or omitted) when verdict is PASS.
+- Do **not** write "No issues found" / "none" / "All claims verified" in
+  a prose section if the YAML `findings:` list contains a finding whose
+  category maps to that section (see "Category → prose section mapping"
+  above). Always generate the YAML first, then derive the prose from it.
 
 The verdict in the YAML block is authoritative; the prose summary's
 `**VERDICT: …**` line should match it.

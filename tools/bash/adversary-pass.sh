@@ -339,6 +339,29 @@ echo "Verdict: $VERDICT"
 echo "Model: $MODEL"
 echo "Review written to: $REVIEW_FILE"
 
+# --- Stage 1a: Prose/YAML drift check (informational, never blocks) ---
+# Re-parses the review file we just wrote and flags any prose section
+# that still uses "no issues" boilerplate when the YAML lists findings
+# of the matching category. Appends a "Pipeline Drift Warning" block
+# to the review file on disagreement. Does NOT change the verdict or
+# YAML — see tools/ts/drift-check.ts.
+#
+# Runs BEFORE Stage 1b (capture) so any appended warning is part of the
+# review body the capture pipeline serialises.
+#
+# ADV_NO_DRIFT_CHECK: when set (non-empty), skip the check.
+DRIFT_SH=""
+for c in "$(dirname "${BASH_SOURCE[0]}")/drift-check.sh" \
+         "$HOME/.pi/agent/tools/drift-check.sh"; do
+  if [[ -x "$c" ]]; then DRIFT_SH="$c"; break; fi
+done
+if [[ -n "${ADV_NO_DRIFT_CHECK:-}" ]]; then
+  echo "drift-check: skipped (ADV_NO_DRIFT_CHECK set)"
+elif [[ -n "$DRIFT_SH" ]]; then
+  "$DRIFT_SH" --review "$REVIEW_FILE" 2>&1 || \
+    echo "drift-check: helper failed (non-fatal)"
+fi
+
 # --- Stage 1b: Bootstrap capture (informational, never blocks) ---
 # Feeds ~/.pi/agent/training/adversary-captures/bootstrap.jsonl for
 # pre-adapter corpus seeding. Falls back silently if the helper is
