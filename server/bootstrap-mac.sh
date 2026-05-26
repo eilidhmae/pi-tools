@@ -19,11 +19,12 @@
 #      (~16 GB) into $HOME/models/.
 #   6. Verifies pi binary and models.json.
 #
-# What this no longer does (compared to the M5 Max bootstrap on main):
-#   - No llama.cpp clone / build. That path was only needed for GGUF
-#     conversion (publishing adapters as Ollama-loadable artifacts);
-#     consumers of pi-tools don't need it.
-#   - No cmake brew install (was only required to build llama.cpp).
+# What's gated by host memory:
+#   - llama.cpp clone/build + cmake are producer-only (the GGUF
+#     publishing pipeline — model-plan.md: convert_hf_to_gguf.py +
+#     llama-quantize). Built on >=64 GB hosts (M5 Max), skipped on
+#     <64 GB (M2 Max consumer). Override with --with-llama-cpp /
+#     --no-llama-cpp. Everything else runs on every Apple Silicon host.
 
 set -euo pipefail
 
@@ -67,15 +68,43 @@ if (( RAM_GB < 64 )); then
     warn "    server/HEALTH.md."
 fi
 
+# --- llama.cpp build gate ---
+# llama.cpp + cmake are only needed by the M5-only GGUF publishing
+# pipeline (model-plan.md: convert_hf_to_gguf.py + llama-quantize, the
+# Metal build). Consumers don't publish adapters, so gate the
+# multi-minute build by host memory:
+#   - >=64 GB host (M5 Max / producer): default ON  (== bootstrap on main).
+#   - <64 GB host  (M2 Max / consumer): default OFF (skip the build).
+# Override with --with-llama-cpp / --no-llama-cpp.
+if (( RAM_GB >= 64 )); then
+    WITH_LLAMA_CPP=1
+else
+    WITH_LLAMA_CPP=0
+fi
+for arg in "$@"; do
+    case "$arg" in
+        --with-llama-cpp) WITH_LLAMA_CPP=1 ;;
+        --no-llama-cpp)   WITH_LLAMA_CPP=0 ;;
+    esac
+done
+LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-$HOME/src/llama.cpp}"
+
 # 1. Homebrew baseline
 if ! command -v brew >/dev/null 2>&1; then
     fail "Homebrew not found. Install from https://brew.sh first."
 fi
 
-say "Installing Homebrew dependencies (uv, gh, jq)…"
+if [[ "$WITH_LLAMA_CPP" -eq 1 ]]; then
+    say "Installing Homebrew dependencies (uv, gh, jq, cmake)…"
+else
+    say "Installing Homebrew dependencies (uv, gh, jq)…"
+fi
 brew list --formula uv      >/dev/null 2>&1 || brew install uv
 brew list --formula gh      >/dev/null 2>&1 || brew install gh
 brew list --formula jq      >/dev/null 2>&1 || brew install jq
+if [[ "$WITH_LLAMA_CPP" -eq 1 ]]; then
+    brew list --formula cmake >/dev/null 2>&1 || brew install cmake
+fi
 
 # 2. Python env (uv-managed)
 PY_ENV="$HOME/.pi/agent/venv"
@@ -95,36 +124,61 @@ fi
 (
     cd "$MLX_LM_DIR"
 
-    # Make sure we have the latest main + the two PR refs.
-    git fetch --quiet origin main
-    # Force-update the local refs so reruns don't trip on non-fast-forward
-    # PR updates.
-    git fetch --quiet origin "+refs/pull/1277/head:refs/heads/pr-1277" || \
-        fail "could not fetch PR #1277; check network and gh.com access"
-    git fetch --quiet origin "+refs/pull/1249/head:refs/heads/pr-1249" || \
-        fail "could not fetch PR #1249; check network and gh.com access"
+    # --- Preflight guard: never destructive-revert a working dev checkout. ---
+    # The recreate below (detach; branch -D pi-tools-patched; checkout -b
+    # pi-tools-patched origin/main; merge PRs) discards uncommitted work and
+    # detaches an active feature branch. On the M5 Max $MLX_LM_DIR is a live
+    # dev checkout (e.g. branch fix-think-state-user-content with uncommitted
+    # mlx_lm/server.py). Skip the recreate when the tree is dirty; the existing
+    # editable venv install is left in place and the import sanity check below
+    # still runs (it passes when the venv is already patched). A fresh clone
+    # (M2 box) is clean, so the recreate runs there as normal.
+    #
+    # `git diff --quiet` exits non-zero when dirty; the `|| TREE_DIRTY=1` form
+    # captures that without `set -e` aborting the script.
+    TREE_DIRTY=0
+    git diff --quiet          || TREE_DIRTY=1
+    git diff --cached --quiet || TREE_DIRTY=1
+    CUR_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo DETACHED)"
 
-    # Recreate the patched branch from scratch each run so reruns stay
-    # idempotent and any local edits get discarded. If you need to pin
-    # to a specific mlx-lm main SHA, export MLX_LM_BASE_REF.
-    MLX_LM_BASE_REF="${MLX_LM_BASE_REF:-origin/main}"
+    if [[ "$TREE_DIRTY" -eq 1 ]]; then
+        warn "mlx-lm checkout at $MLX_LM_DIR is on '$CUR_BRANCH' with a dirty"
+        warn "working tree. SKIPPING the patched-branch recreate to protect"
+        warn "uncommitted work; assuming the venv is already patched (the"
+        warn "sanity check below confirms). To force a clean rebuild: commit/"
+        warn "stash your changes, or set MLX_LM_DIR to a throwaway path."
+    else
+        # Make sure we have the latest main + the two PR refs.
+        git fetch --quiet origin main
+        # Force-update the local refs so reruns don't trip on non-fast-forward
+        # PR updates.
+        git fetch --quiet origin "+refs/pull/1277/head:refs/heads/pr-1277" || \
+            fail "could not fetch PR #1277; check network and gh.com access"
+        git fetch --quiet origin "+refs/pull/1249/head:refs/heads/pr-1249" || \
+            fail "could not fetch PR #1249; check network and gh.com access"
 
-    # Detach so we can safely delete branches we might be on.
-    git checkout --quiet --detach
-    git branch -D "$PATCHED_BRANCH" >/dev/null 2>&1 || true
-    git checkout --quiet -b "$PATCHED_BRANCH" "$MLX_LM_BASE_REF"
+        # Recreate the patched branch from scratch each run so reruns stay
+        # idempotent and any local edits get discarded. If you need to pin
+        # to a specific mlx-lm main SHA, export MLX_LM_BASE_REF.
+        MLX_LM_BASE_REF="${MLX_LM_BASE_REF:-origin/main}"
 
-    # Merge each PR. If a merge conflicts the user has to resolve it
-    # manually; we fail loudly rather than auto-resolving the wrong way.
-    if ! git merge --no-ff --no-edit -m "merge PR #1249 fix/adapter-path" pr-1249; then
-        warn "Merge conflict applying PR #1249 onto $MLX_LM_BASE_REF."
-        warn "Resolve in $MLX_LM_DIR and rerun bootstrap-mac.sh."
-        exit 3
-    fi
-    if ! git merge --no-ff --no-edit -m "merge PR #1277 fix-think-state-user-content" pr-1277; then
-        warn "Merge conflict applying PR #1277 onto $PATCHED_BRANCH."
-        warn "Resolve in $MLX_LM_DIR and rerun bootstrap-mac.sh."
-        exit 3
+        # Detach so we can safely delete branches we might be on.
+        git checkout --quiet --detach
+        git branch -D "$PATCHED_BRANCH" >/dev/null 2>&1 || true
+        git checkout --quiet -b "$PATCHED_BRANCH" "$MLX_LM_BASE_REF"
+
+        # Merge each PR. If a merge conflicts the user has to resolve it
+        # manually; we fail loudly rather than auto-resolving the wrong way.
+        if ! git merge --no-ff --no-edit -m "merge PR #1249 fix/adapter-path" pr-1249; then
+            warn "Merge conflict applying PR #1249 onto $MLX_LM_BASE_REF."
+            warn "Resolve in $MLX_LM_DIR and rerun bootstrap-mac.sh."
+            exit 3
+        fi
+        if ! git merge --no-ff --no-edit -m "merge PR #1277 fix-think-state-user-content" pr-1277; then
+            warn "Merge conflict applying PR #1277 onto $PATCHED_BRANCH."
+            warn "Resolve in $MLX_LM_DIR and rerun bootstrap-mac.sh."
+            exit 3
+        fi
     fi
 
     say "Installing patched mlx-lm editable into $PY_ENV"
@@ -134,6 +188,10 @@ fi
 # Sanity check: confirm mlx_lm imports from the patched checkout, not pypi.
 RESOLVED="$(python -c 'import mlx_lm, pathlib; print(pathlib.Path(mlx_lm.__file__).resolve().parent)')"
 EXPECTED="$MLX_LM_DIR/mlx_lm"
+# Actual checked-out branch for the banner: on the dirty-tree skip path this is
+# the operator's dev branch (e.g. fix-think-state-user-content), not the
+# recreated pi-tools-patched branch.
+MLX_LM_BRANCH="$(git -C "$MLX_LM_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$PATCHED_BRANCH")"
 if [[ "$RESOLVED" != "$EXPECTED" ]]; then
     warn "mlx_lm resolves to: $RESOLVED"
     warn "Expected:           $EXPECTED"
@@ -193,6 +251,29 @@ else
     say "Base model already present at $BASE_MODEL_DIR"
 fi
 
+# 6b. llama.cpp for GGUF conversion (producer-only).
+# The M5 GGUF publishing pipeline (model-plan.md steps 4-6:
+# convert_hf_to_gguf.py + llama-quantize) needs the Metal build. Gated by
+# WITH_LLAMA_CPP (default ON >=64 GB; --no-llama-cpp to skip). When
+# skipped, mlx_lm inference is unaffected.
+if [[ "$WITH_LLAMA_CPP" -eq 1 ]]; then
+    if [[ ! -d "$LLAMA_CPP_DIR/.git" ]]; then
+        say "Cloning llama.cpp → $LLAMA_CPP_DIR"
+        git clone --depth 1 https://github.com/ggerganov/llama.cpp "$LLAMA_CPP_DIR"
+    else
+        say "llama.cpp present; pulling latest"
+        git -C "$LLAMA_CPP_DIR" pull --ff-only || warn "git pull failed, continuing"
+    fi
+
+    if [[ ! -x "$LLAMA_CPP_DIR/build/bin/llama-quantize" ]]; then
+        say "Building llama.cpp (Metal)…"
+        cmake -S "$LLAMA_CPP_DIR" -B "$LLAMA_CPP_DIR/build" -DGGML_METAL=ON -DGGML_NATIVE=ON >/dev/null
+        cmake --build "$LLAMA_CPP_DIR/build" --config Release -j >/dev/null
+    fi
+else
+    say "Skipping llama.cpp build (consumer profile; --with-llama-cpp to enable)."
+fi
+
 # 7. pi binary check
 if ! command -v pi >/dev/null 2>&1; then
     warn "pi CLI not found on PATH. Install pi-coding-agent before using the harness."
@@ -217,7 +298,7 @@ cat <<BANNER
 ================================================================================
 Bootstrap complete.
 
-  Patched mlx-lm: $MLX_LM_DIR  (branch: $PATCHED_BRANCH)
+  Patched mlx-lm: $MLX_LM_DIR  (branch: $MLX_LM_BRANCH)
   Base model:     $BASE_MODEL_DIR
   Venv:           $PY_ENV
 
