@@ -57,20 +57,28 @@ REVISE=0
 QUORUM=0
 
 # --- Auto-detect default provider/model ---
-# On Apple Silicon the default is local-mlx + qwen3-coder-30b-a3b (the
-# MLX stack this repo brings up). If localhost:18080 is unreachable we
-# fail LOUDLY rather than silently falling back to a different backend:
-# corpus contamination from a fallback model -- different weights →
-# different verdicts, silently mislabelled -- is worse than a noisy
-# abort. The ollama fallback was removed on 2026-05-16 after a salvage
-# batch quietly emitted records labelled ollama/qwen3-coder:30b when the
-# local-mlx probe transiently failed. ollama has no role on Apple
-# Silicon anyway: it serves the same base model via a different runtime
-# and can't load the per-role LoRA adapters this harness is built on.
+# On Apple Silicon the default is local-mlx + the deployed thinking
+# adversary (Qwen3.5-27B-4bit, zero-shot, no adapter). The earlier
+# SFT lane (`qwen3-coder-30b-a3b` + `+adversary` adapter) is
+# deprecated on this branch — under the precision-on-real-bugs
+# metric, the thinking base produces substantively more findings.
+# Operators with the model at a different location export
+# PI_ADVERSARY_MODEL to override; default path uses $HOME so it
+# resolves correctly per user. The launch wrapper lives at
+# server/thinking-adversary/launch.sh.
+# If localhost:18080 is unreachable we fail LOUDLY rather than silently
+# falling back to a different backend: corpus contamination from a
+# fallback model -- different weights → different verdicts, silently
+# mislabelled -- is worse than a noisy abort. The ollama fallback was
+# removed on 2026-05-16 after a salvage batch quietly emitted records
+# labelled ollama/qwen3-coder:30b when the local-mlx probe transiently
+# failed. ollama has no role on Apple Silicon anyway: it serves a
+# different base via a different runtime, can't load the per-role LoRA
+# adapters this harness was built on, and emits no thinking trace.
 # On non-Apple platforms the legacy ollama path still applies.
 # --provider / --model / --adapter / --domain flags override this.
 if [[ "$(uname -m)" == "arm64" ]]; then
-  MODEL="qwen3-coder-30b-a3b"
+  MODEL="${PI_ADVERSARY_MODEL:-$HOME/models/Qwen3.5-27B-4bit}"
   PROVIDER="local-mlx"
   if ! curl -fs --max-time 3 http://localhost:18080/v1/models >/dev/null 2>&1; then
     echo "ERROR: default backend http://localhost:18080 unreachable on"  >&2
@@ -102,7 +110,7 @@ while [[ $# -gt 0 ]]; do
         rust)       MODEL="qwen3-coder-30b-a3b+rust" ;;
         python)     MODEL="qwen3-coder-30b-a3b+python" ;;
         terraform)  MODEL="qwen3-coder-30b-a3b+tf" ;;
-        general)    MODEL="qwen3-coder-30b-a3b" ;;
+        general)    MODEL="${PI_ADVERSARY_MODEL:-$HOME/models/Qwen3.5-27B-4bit}" ;;
         *)          echo "Unknown --domain: $2" >&2; exit 1 ;;
       esac
       shift ;;

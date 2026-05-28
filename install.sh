@@ -222,7 +222,14 @@ if [[ ! -f "$MODELS_JSON" ]]; then
   echo "=== models.json not found at ${MODELS_JSON} — installing template ==="
   mkdir -p "$(dirname "$MODELS_JSON")"
   if [[ -f "$TEMPLATE" ]]; then
-    cp "$TEMPLATE" "$MODELS_JSON"
+    # Expand $HOME at install time so the resulting models.json contains
+    # the operator's actual home path (pi sends model ids verbatim to
+    # mlx_lm.server, which resolves them as paths; an unexpanded "$HOME"
+    # in the runtime config would not work). Substitution is limited to
+    # the literal token "$HOME"; other $ references in the template (if
+    # any are added later) pass through untouched. Same -i-free pattern
+    # used by server/mlx-lm-multi/proxy.service.plist for _REPLACE_USER_.
+    sed "s|\$HOME|$HOME|g" "$TEMPLATE" > "$MODELS_JSON"
     echo "  Created: $MODELS_JSON  (local-mlx + contrast providers)"
   elif [[ "$IS_ARM64" -eq 1 ]]; then
     # Template missing on arm64: write a minimal local-mlx config, not the
