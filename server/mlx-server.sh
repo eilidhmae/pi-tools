@@ -2,31 +2,48 @@
 #
 # mlx-server.sh — local mlx_lm.server stack control.
 #
-# Wraps server/mlx-lm-multi/{launch,stop}.sh (the Qwen production
-# track) and additionally manages config-driven side-by-side
-# mlx_lm.server processes for cross-family contrast models.
+# Dispatcher for two mutually-exclusive primary tracks (both bind
+# :18080) plus side-by-side cross-family contrast models on other
+# ports.
 #
-# The Qwen proxy.py is hardcoded to a single base id, so a different-
-# family contrast model can't slot into it. Each row in
-# server/extra-models/config.conf declares a `<short-name> <port>
-# <hf-repo-id>` triple; mlx-server.sh starts one mlx_lm.server per
-# row, pointed at the named HuggingFace cache snapshot. Operators
-# wire a matching `local-mlx-<short-name>` provider in models.json
-# (see server/extra-models/README.md for the snippet).
+# Primary tracks:
+#   thinking  Single-sidecar deployment of Qwen3.5-27B + thinking
+#             (zero-shot, no adapter). The current default and the
+#             deployed local adversary. Wraps
+#             server/thinking-adversary/launch.sh.
+#   sft       Legacy multi-adapter SFT stack: Qwen3-Coder-30B-A3B
+#             base on :18090 plus a routing proxy on :18080, with
+#             per-domain LoRA adapters on additional ports. Parked
+#             — the +adversary adapter saturated at reconciled 1/15
+#             on seeded recall and went silent on 9/15 held-out
+#             files. Wraps server/mlx-lm-multi/{launch,stop}.sh.
+#
+# Both tracks bind :18080, so only one can be up at a time. The
+# bare `up` command starts the thinking track plus any configured
+# extras; switch tracks with `down` then `up sft|thinking`.
+#
+# Extra-models track (orthogonal to the primary tracks):
+#   Each row in server/extra-models/config.conf declares a
+#   `<short-name> <port> <hf-repo-id>` triple; mlx-server.sh starts
+#   one mlx_lm.server per row, pointed at the named HuggingFace
+#   cache snapshot. Operators wire a matching `local-mlx-<short-name>`
+#   provider in models.json (see server/extra-models/README.md).
 #
 # Usage:
-#   ./mlx-server.sh up                  # start qwen + all configured extras
-#   ./mlx-server.sh up qwen|<name>      # start one track
-#   ./mlx-server.sh down                # stop everything
-#   ./mlx-server.sh down qwen|<name>    # stop one track
-#   ./mlx-server.sh status              # listeners + /healthz + venv check
-#   ./mlx-server.sh logs [base|<name>]  # tail the chosen log (default: base)
-#   ./mlx-server.sh list                # list configured tracks
-#   ./mlx-server.sh help                # this message
+#   ./mlx-server.sh up                    # start thinking + all configured extras
+#   ./mlx-server.sh up thinking|sft       # start one primary track
+#   ./mlx-server.sh up <extra-name>       # start one extra
+#   ./mlx-server.sh down                  # stop everything
+#   ./mlx-server.sh down thinking|sft     # stop one primary track
+#   ./mlx-server.sh down <extra-name>     # stop one extra
+#   ./mlx-server.sh status                # listeners + /healthz + venv check
+#   ./mlx-server.sh logs [thinking|sft|<name>]  # tail the chosen log
+#   ./mlx-server.sh list                  # list configured tracks
+#   ./mlx-server.sh help                  # this message
 #
 # Ports:
-#   :18080  routing proxy (proxy.py)         — pi talks to this for Qwen
-#   :18090  base mlx_lm.server (Qwen)        — backend for the proxy
+#   :18080  thinking sidecar OR sft routing proxy (mutually exclusive)
+#   :18090  sft base mlx_lm.server (only when sft track is up)
 #   :18100+ contrast servers (one per row in extra-models/config.conf)
 #
 # Environment overrides:
@@ -53,9 +70,12 @@ VENV="${PI_VENV:-$HOME/.pi/agent/venv}"
 VENV_PY="$VENV/bin/python"
 MLX_SERVER_BIN="$VENV/bin/mlx_lm.server"
 PI_MULTI="$SCRIPT_DIR/mlx-lm-multi"
-LAUNCH="$PI_MULTI/launch.sh"
-STOP="$PI_MULTI/stop.sh"
-BASE_LOG="$PI_MULTI/logs/base.log"
+SFT_LAUNCH="$PI_MULTI/launch.sh"
+SFT_STOP="$PI_MULTI/stop.sh"
+SFT_BASE_LOG="$PI_MULTI/logs/base.log"
+THINKING_DIR="$SCRIPT_DIR/thinking-adversary"
+THINKING_LAUNCH="$THINKING_DIR/launch.sh"
+THINKING_LOG="$THINKING_DIR/logs/server.log"
 PROXY_URL="http://localhost:18080"
 EXPECTED_MLX_PATH="${PI_EXPECTED_MLX_PATH:-}"
 HF_HUB_CACHE="${HF_HOME:-$HOME/.cache/huggingface}/hub"
@@ -131,10 +151,11 @@ extra_pid_alive() {
 # --- preconditions ----------------------------------------------------------
 
 require_paths() {
-  [[ -d "$VENV" ]]    || die "venv missing: $VENV (run server/bootstrap-mac.sh first)"
-  [[ -x "$VENV_PY" ]] || die "venv python missing: $VENV_PY"
-  [[ -x "$LAUNCH" ]]  || die "launch.sh missing: $LAUNCH"
-  [[ -x "$STOP" ]]    || die "stop.sh missing: $STOP"
+  [[ -d "$VENV" ]]            || die "venv missing: $VENV (run server/bootstrap-mac.sh first)"
+  [[ -x "$VENV_PY" ]]         || die "venv python missing: $VENV_PY"
+  [[ -x "$SFT_LAUNCH" ]]      || die "sft launch.sh missing: $SFT_LAUNCH"
+  [[ -x "$SFT_STOP" ]]        || die "sft stop.sh missing: $SFT_STOP"
+  [[ -x "$THINKING_LAUNCH" ]] || die "thinking launch.sh missing: $THINKING_LAUNCH"
 }
 
 require_mlx_server_bin() {
@@ -163,16 +184,26 @@ warn_if_not_patched() {
   esac
 }
 
-# --- qwen track -------------------------------------------------------------
+# --- primary tracks (mutually exclusive on :18080) --------------------------
 
-qwen_up() {
-  info "${BOLD}>>> qwen track${RST}"
-  "$LAUNCH"
+thinking_up() {
+  info "${BOLD}>>> thinking track${RST}"
+  "$THINKING_LAUNCH"
 }
 
-qwen_down() {
-  info "${BOLD}>>> qwen track${RST}"
-  "$STOP"
+thinking_down() {
+  info "${BOLD}>>> thinking track${RST}"
+  "$THINKING_LAUNCH" stop
+}
+
+sft_up() {
+  info "${BOLD}>>> sft track${RST}  (legacy multi-adapter SFT stack)"
+  "$SFT_LAUNCH"
+}
+
+sft_down() {
+  info "${BOLD}>>> sft track${RST}"
+  "$SFT_STOP"
 }
 
 # --- extra-models track (one per config row) -------------------------------
@@ -277,23 +308,29 @@ cmd_up() {
   local target="${1:-all}"
   case "$target" in
     all)
-      qwen_up
+      thinking_up
       info ""
       extra_up_all
       ;;
+    thinking)
+      thinking_up
+      ;;
+    sft)
+      sft_up
+      ;;
     qwen)
-      qwen_up
+      die "the 'qwen' track has been split: use 'thinking' (default) or 'sft' (legacy multi-adapter)"
       ;;
     *)
       if extra_idx "$target" >/dev/null; then
         extra_up "$target"
       else
-        die "unknown track: '$target' (use: all|qwen|${EXTRA_NAMES[*]:-})"
+        die "unknown track: '$target' (use: all|thinking|sft|${EXTRA_NAMES[*]:-})"
       fi
       ;;
   esac
   info ""
-  info "tail logs:    $0 logs [base|<name>]"
+  info "tail logs:    $0 logs [thinking|sft|<name>]"
   info "check health: $0 status"
 }
 
@@ -302,17 +339,25 @@ cmd_down() {
   local target="${1:-all}"
   case "$target" in
     all)
-      qwen_down
+      # Stop both primary tracks; whichever one isn't running is a no-op.
+      thinking_down
+      sft_down
       extra_down_all
       ;;
+    thinking)
+      thinking_down
+      ;;
+    sft)
+      sft_down
+      ;;
     qwen)
-      qwen_down
+      die "the 'qwen' track has been split: use 'thinking' (default) or 'sft' (legacy multi-adapter)"
       ;;
     *)
       if extra_idx "$target" >/dev/null; then
         extra_down "$target"
       else
-        die "unknown track: '$target' (use: all|qwen|${EXTRA_NAMES[*]:-})"
+        die "unknown track: '$target' (use: all|thinking|sft|${EXTRA_NAMES[*]:-})"
       fi
       ;;
   esac
@@ -335,11 +380,15 @@ cmd_status() {
     warn "  no listeners on any tracked port (${ports[*]})"
   fi
   info ""
-  info "${BOLD}qwen proxy health:${RST}"
+  info "${BOLD}primary track on :18080:${RST}"
+  # Try /healthz first (sft proxy). Fall back to /v1/models (thinking
+  # sidecar — mlx_lm.server exposes /v1/models but not /healthz).
   if curl -sS -m 3 "$PROXY_URL/healthz" 2>/dev/null | jq -C . 2>/dev/null; then
-    :
+    info "  (sft proxy responding on /healthz)"
+  elif curl -sS -m 3 "$PROXY_URL/v1/models" 2>/dev/null | jq -C '.data[0].id' 2>/dev/null; then
+    info "  (thinking sidecar responding on /v1/models)"
   else
-    warn "  proxy at $PROXY_URL not responding"
+    warn "  nothing responding at $PROXY_URL"
   fi
   local i name url
   for i in "${!EXTRA_NAMES[@]}"; do
@@ -361,15 +410,19 @@ cmd_status() {
 }
 
 cmd_logs() {
-  local which="${1:-base}"
+  local which="${1:-thinking}"
   local logfile
   case "$which" in
-    base|qwen) logfile="$BASE_LOG" ;;
+    thinking)       logfile="$THINKING_LOG" ;;
+    sft|base)       logfile="$SFT_BASE_LOG" ;;
+    qwen)
+      die "the 'qwen' track has been split: use 'thinking' (default) or 'sft' (legacy multi-adapter)"
+      ;;
     *)
       if extra_idx "$which" >/dev/null; then
         logfile=$(extra_log "$which")
       else
-        die "unknown log: '$which' (use: base|qwen|${EXTRA_NAMES[*]:-})"
+        die "unknown log: '$which' (use: thinking|sft|${EXTRA_NAMES[*]:-})"
       fi
       ;;
   esac
@@ -379,8 +432,9 @@ cmd_logs() {
 }
 
 cmd_list() {
-  info "${BOLD}qwen track:${RST}"
-  info "  port=18080 (proxy) → 18090 (base) + any adapters in mlx-lm-multi/adapters.conf"
+  info "${BOLD}primary tracks (mutually exclusive on :18080):${RST}"
+  info "  thinking  port=18080  Qwen3.5-27B + thinking (zero-shot)  [DEFAULT]"
+  info "  sft       port=18080 (proxy) → 18090 (base) + adapters in mlx-lm-multi/adapters.conf  [LEGACY]"
   info ""
   info "${BOLD}extra-models (from $EXTRA_CONF):${RST}"
   if [[ ${#EXTRA_NAMES[@]} -eq 0 ]]; then
@@ -394,7 +448,7 @@ cmd_list() {
 }
 
 cmd_help() {
-  sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,50p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 load_extra_config
