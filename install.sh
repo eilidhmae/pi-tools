@@ -217,6 +217,19 @@ TEMPLATE="$SCRIPT_DIR/server/models.json.template"
 IS_ARM64=0
 [[ "$(uname -m)" == "arm64" ]] && IS_ARM64=1
 
+# local-mlx baseUrls below use 127.0.0.1 instead of localhost on purpose.
+# On macOS /etc/hosts maps localhost to both 127.0.0.1 and ::1; mlx_lm.server
+# binds IPv4 only. Symptom seen with pi 0.75.5 (Node 26, openai-js 6.26.0)
+# pointed at `localhost`: TCP socket opens but no HTTP POST is ever written,
+# server log stays silent, GPU idle, pi hangs with zero stdout. Switching
+# the client to 127.0.0.1 sidesteps the dual-stack lookup and the request
+# goes through. Root cause not isolated (suspect happy-eyeballs handling
+# in the openai-js HTTP agent); workaround applied at the client side.
+# Verify by tailing the launcher log for the POST while a scan runs
+# (server/thinking-adversary/logs/server.log for the thinking sidecar,
+# per-port logs under server/mlx-lm-multi/ for the SFT stack).
+# The ollama branch below intentionally keeps `localhost` -- it only fires
+# on non-Apple hosts where the dual-stack symptom hasn't been observed.
 if [[ ! -f "$MODELS_JSON" ]]; then
   echo ""
   echo "=== models.json not found at ${MODELS_JSON} — installing template ==="
@@ -239,7 +252,7 @@ if [[ ! -f "$MODELS_JSON" ]]; then
 {
   "providers": {
     "local-mlx": {
-      "baseUrl": "http://localhost:18080/v1",
+      "baseUrl": "http://127.0.0.1:18080/v1",
       "api": "openai-completions",
       "apiKey": "local",
       "compat": {
