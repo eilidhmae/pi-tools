@@ -28,6 +28,17 @@
 
 set -uo pipefail
 
+# LOCAL ADVERSARY SUSPENDED 2026-05-28 -- the local-MLX adversary
+# (Qwen3.5-27B+thinking on :18080) is broken for this use: on real-sized
+# prompts it spends the entire --max-tokens budget emitting reasoning and
+# returns an empty body (finish_reason=length, zero content). Verified by
+# back-to-back proxy-stream captures (0 content deltas vs ~8000 reasoning).
+# The background corpus scan is therefore disabled until a stable model is
+# chosen (Momus model survey). Re-enable by deleting this block. The Claude
+# adversary subagent remains the regular adversary path. Related localhost
+# fix: 0634bfe.
+exit 0
+
 if [[ "${PI_SKIP_POST_COMMIT_SCAN:-0}" == "1" ]]; then
     exit 0
 fi
