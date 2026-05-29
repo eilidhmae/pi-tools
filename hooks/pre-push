@@ -32,6 +32,19 @@
 
 set -uo pipefail
 
+# LOCAL ADVERSARY SUSPENDED 2026-05-28 -- the local-MLX adversary
+# (Qwen3.5-27B+thinking on :18080) is broken for this use: on real-sized
+# prompts it spends the entire --max-tokens budget emitting reasoning and
+# returns an empty body (finish_reason=length, zero content), which this
+# gate then captured to disagreements.jsonl as a parse-failure. The LLM
+# push gate is disabled until a stable model is chosen (Momus model
+# survey). Re-enable by deleting this block. The mechanical pre-commit
+# gate (adversary-check.sh, no LLM) is unaffected, and the Claude
+# adversary subagent remains the regular adversary path. Related
+# localhost fix: 0634bfe.
+echo "pre-push: local adversary gate SUSPENDED (broken model; see Momus model survey). Push proceeding."
+exit 0
+
 REPO_ROOT=$(git rev-parse --show-toplevel)
 SCAN_SH="$HOME/.pi/agent/tools/adversary-scan.sh"
 ZERO40="0000000000000000000000000000000000000000"
