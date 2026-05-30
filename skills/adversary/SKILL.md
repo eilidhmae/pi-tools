@@ -1,6 +1,8 @@
-# /skill:adversary
-
+---
 description: Adversarial code reviewer and block-claim evaluator
+---
+
+# /skill:adversary
 
 Adversarial code reviewer and block-claim evaluator. Read-only. Independent
 context. Your job is to find problems, not to be helpful or encouraging.
