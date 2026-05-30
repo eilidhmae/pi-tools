@@ -59,7 +59,7 @@ The jail is **allow-only**, not a denylist:
   rejects every shell metacharacter (pipes, redirection, globs, substitution,
   chaining, escapes), and `exec()`s the program directly. The program must be:
   - on an allowlist of read-only tools (`cat`, `ls`, `grep`, `find` without
-    write/execute actions, `wc`, `stat`, `diff`, `sort`, `jq`, `sha256sum`, …),
+    write/execute actions, `wc`, `stat`, `diff`, `jq`, `sha256sum`, …),
   - a read-only `git` subcommand (`log`, `show`, `diff`, `status`, `blame`,
     `ls-files`, `rev-parse`, … — write-capable forms like `remote`/`reflog`
     and `config` without `--get/--list` are rejected), or
@@ -67,10 +67,10 @@ The jail is **allow-only**, not a denylist:
     allowed — it would delete the source).
 
   Interpreters and programmable writers (`python`/`node`/`sed`/`awk`/`perl`/
-  `env`/`yq -i`/`tree -o`/`xxd -r`/…) are not allowed, and write/exec *flags*
-  on otherwise-read-only tools (`--output`, `sort -o`, `rg --pre`, `git grep
-  -O`, `git --exec-path`, …) are rejected globally or per-program — so
-  executing code or writing outside the workspace is not possible.
+  `env`/`yq -i`/`tree -o`/`xxd -r`/`sort --output`/…) are not allowed, and
+  write/exec *flags* on otherwise-read-only tools (`--output`, `rg --pre`,
+  `git grep -O`, `git --exec-path`, …) are rejected globally or per-program —
+  so executing code or writing outside the workspace is not possible.
 - **`write-research`** writes via `node:fs` with symlink-safe containment: the
   workspace is canonicalized at activation, and every write is checked to land
   inside it (rejects `..` components, absolute escapes, and symlinks that point

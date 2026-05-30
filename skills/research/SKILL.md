@@ -42,7 +42,7 @@ You have access to:
   in session header)
 - `bash-safe` — run ONE allowlisted read-only command (if available). No shell:
   no pipes, redirection, globs, or chaining. Allows read-only tools (cat, wc,
-  stat, diff, sort, jq, find without -exec/-delete, …), read-only `git` (log,
+  stat, diff, jq, find without -exec/-delete, …), read-only `git` (log,
   show, diff, status, blame, …), and `cp` only into your workspace (`mv` is
   not allowed — it would delete the source).
 

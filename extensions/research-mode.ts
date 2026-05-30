@@ -90,13 +90,13 @@ export function assessProtection(available: string[]): {
  * only when its destination resolves inside the workspace. (`mv` is NOT
  * allowed — it deletes the source, a write to the repo.) Flags that turn an
  * otherwise read-only program into a writer/executor are rejected globally
- * (DANGEROUS_FLAGS) or per-program (find/sort/git/yq guards below).
+ * (DANGEROUS_FLAGS) or per-program (find/git/yq guards below).
  */
 
 /** Read-only programs. None can write files or spawn a shell on their own. */
 export const READONLY_COMMANDS = new Set([
   "cat", "head", "tail", "wc", "stat", "file", "ls", "du", "df",
-  "sort", "uniq", "cut", "comm", "diff", "cmp", "grep", "egrep", "fgrep", "rg",
+  "uniq", "cut", "comm", "diff", "cmp", "grep", "egrep", "fgrep", "rg",
   "find", "date", "basename", "dirname", "realpath", "readlink", "echo",
   "printf", "nl", "fold", "rev", "tac", "paste", "join", "seq", "expand",
   "unexpand", "fmt", "column", "pwd", "which", "type",
@@ -105,9 +105,11 @@ export const READONLY_COMMANDS = new Set([
   "hexdump", "od", "strings", "jq", "yq",
 ]);
 // NOTE: deliberately excluded because a flag turns them into a writer/executor
-// with no read-only-only value here: `env`/`printenv` (`env sh -c …` execs any
-// program), `tree` (`-o FILE` writes), `xxd` (`-r` writes — use od/hexdump to
-// read). `rg`/`sort`/`git` stay but are flag-guarded below.
+// with no read-only-only value here — and for `sort`, GNU long-option
+// abbreviation (`--out` == `--output`) defeats any per-flag guard: `env`/
+// `printenv` (`env sh -c …` execs any program), `tree` (`-o` writes), `xxd`
+// (`-r` writes — use od/hexdump), `sort` (`--output`/`-T` write, `--compress-
+// program` execs). `rg` and `git` stay but are flag-guarded (below / globally).
 /** find actions that write or execute — rejected even though find is allowed. */
 const FIND_WRITE_ACTIONS = new Set(["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf", "-fls"]);
 /** git subcommands that only read. */
@@ -125,11 +127,12 @@ const COPY_COMMANDS = new Set(["cp"]);
 /**
  * Flags that make an otherwise read-only program write a file or exec another
  * program; rejected for EVERY command since none have a read-only use among
- * the allowlisted tools: `--output=FILE` (git/sort/…), `--pre`/`--hostname-bin`
+ * the allowlisted tools: `--output=FILE` (git/…), `--pre`/`--hostname-bin`
  * (rg subprocess), `--open-files-in-pager` (git grep pager exec), `--exec-path`
  * (git external-subcommand dir), `--config-env` (git runtime config). Ambiguous
  * short flags (`-o`, `-O`, `-r`) are handled per-program below, because their
- * meaning differs across tools (grep -o vs sort -o; find -O<level> vs git grep -O<cmd>).
+ * meaning differs across tools (grep -o only-matching vs an output-file -o;
+ * find -O<level> vs git grep -O<cmd>).
  */
 const DANGEROUS_FLAGS = ["--output", "--pre", "--open-files-in-pager", "--exec-path", "--hostname-bin", "--config-env"];
 function dangerousFlag(argv: string[]): string | null {
@@ -216,9 +219,6 @@ export function classifyCommand(argv: string[]): { kind: "readonly" } | { kind: 
     if (bin === "yq" && argv.some((a) => a === "-i" || a === "--inplace")) {
       return { error: "yq -i/--inplace edits files in place and is not allowed" };
     }
-    if (bin === "sort" && argv.some((a) => a === "-o" || a.startsWith("-o"))) {
-      return { error: "sort -o/--output writes a file and is not allowed" };
-    }
     if (bin === "git") return { error: "git is handled separately" }; // (git not in READONLY set)
     return { kind: "readonly" };
   }
@@ -249,7 +249,7 @@ export function classifyCommand(argv: string[]): { kind: "readonly" } | { kind: 
     if (operands.length < 2) return { error: `${bin} needs a source and a destination` };
     return { kind: "copy", dest: operands[operands.length - 1] };
   }
-  return { error: `'${bin}' is not an allowed command. Allowed: read-only tools (cat, ls, grep, find, wc, stat, diff, sort, jq, …), read-only git, and cp into the workspace.` };
+  return { error: `'${bin}' is not an allowed command. Allowed: read-only tools (cat, ls, grep, find, wc, stat, diff, jq, …), read-only git, and cp into the workspace.` };
 }
 
 /** The RESEARCH MODE block prepended to the system prompt while jailed. */
@@ -413,13 +413,13 @@ export default function (pi: ExtensionAPI) {
       "Run ONE read-only command. There is NO shell: no pipes, redirection, " +
       "globs, command substitution, or chaining (run a single command per call). " +
       "Allowed: read-only tools (cat, head, tail, wc, stat, file, ls, du, " +
-      "sort, uniq, cut, diff, cmp, grep, rg, find, jq, od, strings, sha256sum, " +
+      "uniq, cut, diff, cmp, grep, rg, find, jq, od, strings, sha256sum, " +
       "…), read-only git (log, show, diff, status, blame, ls-files, …), and " +
       "cp whose destination is inside the research workspace. Anything else " +
       "is rejected. Use grep/find directly instead of piping.",
     promptSnippet: "bash-safe: run ONE allowlisted read-only command (no shell, no pipes); cp only into the workspace",
     promptGuidelines: [
-      "bash-safe runs a single program directly with no shell — no pipes/redirection/globs. Use `grep pattern file`, `sort -u file`, `find <dir> -name '...'` rather than chaining.",
+      "bash-safe runs a single program directly with no shell — no pipes/redirection/globs. Use `grep pattern file`, `wc -l file`, `find <dir> -name '...'` rather than chaining.",
       "To bring a repo file into the workspace, use `cp <src> <workspace>/...`; to write new content use write-research.",
     ],
     parameters: {
