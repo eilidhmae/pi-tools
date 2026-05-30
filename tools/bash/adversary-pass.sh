@@ -292,8 +292,18 @@ echo "================================================"
 echo ""
 
 # --- Stage 1: Primary adversary review ---
-# Deterministic single-turn pi: every autoload off, skill loaded
-# explicitly via --append-system-prompt.
+# Deterministic single-turn pi: every autoload off, skill loaded as the
+# SOLE system prompt via --system-prompt. We previously used
+# --append-system-prompt, which leaves pi's stock coding-assistant
+# preamble in front of the SKILL ("You are an expert coding assistant
+# operating inside pi ... Available tools: ... Pi documentation: ...").
+# That preamble has two costs at the model layer: it adds ~375 tokens
+# of prompt overhead and -- much worse -- it frames the request as an
+# interactive multi-turn agent task, which on Qwen3.5-27B + thinking
+# pushes the reasoning trace into territory where it can consume the
+# entire --max-tokens 8192 budget and never emit a visible body. Using
+# --system-prompt replaces pi's default with the adversary skill alone,
+# which is what we actually want here.
 run_pi() {
   local extra_user="$1"
   pi \
@@ -305,7 +315,7 @@ run_pi() {
     --no-session \
     --provider "$PROVIDER" \
     --model "$MODEL" \
-    --append-system-prompt "$SKILL_PATH" \
+    --system-prompt "$(cat "$SKILL_PATH")" \
     -p "$(cat "$PAYLOAD")${extra_user}" 2>&1
 }
 
