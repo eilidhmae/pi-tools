@@ -29,6 +29,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 TARGET="${1:?Usage: adversary-jailed.sh <path>}"
 if [[ ! -e "$TARGET" ]]; then
   echo "ERROR: target '$TARGET' does not exist." >&2
@@ -71,12 +73,16 @@ REVIEW_FILE="${REVIEW_DIR}/${TARGET_LABEL}-jailed-${TIMESTAMP}.md"
 mkdir -p "$REVIEW_DIR"
 
 # --- Step 0 baseline: run the script here; the jailed model cannot ---
+# adversary-check.sh sits beside this script in both layouts (repo
+# scripts/bash/, installed ~/.pi/agent/scripts/), so resolve it relative to
+# this script — not the CWD — then fall back to the global install.
 BASELINE="(mechanical baseline unavailable)"
-if [[ -x scripts/bash/adversary-check.sh ]] || [[ -f scripts/bash/adversary-check.sh ]]; then
-  BASELINE=$(bash scripts/bash/adversary-check.sh . 2>&1 || true)
-elif [[ -f "${HOME}/.pi/agent/scripts/adversary-check.sh" ]]; then
-  BASELINE=$(bash "${HOME}/.pi/agent/scripts/adversary-check.sh" . 2>&1 || true)
-fi
+for cand in "$SCRIPT_DIR/adversary-check.sh" "${HOME}/.pi/agent/scripts/adversary-check.sh"; do
+  if [[ -f "$cand" ]]; then
+    BASELINE=$(bash "$cand" . 2>&1 || true)
+    break
+  fi
+done
 
 read -r -d '' PROMPT <<EOF || true
 Review the target below as the adversary. You are in the research-mode jail:

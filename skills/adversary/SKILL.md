@@ -221,9 +221,14 @@ Quick pass for:
 
 If your tentative verdict is **PASS**, skip this step.
 
-If your tentative verdict is **CONCERNS** or **FAIL**, the `extensions/quorum.ts`
-extension will automatically spawn a peer adversary session when you output your
-verdict. You do not need to trigger this manually.
+If your tentative verdict is **CONCERNS** or **FAIL** and the `extensions/quorum.ts`
+extension is loaded, it will automatically spawn a peer adversary session when you
+output your verdict. You do not need to trigger this manually.
+
+**Jailed context exception:** when this skill is run via `adversary-jailed.sh`,
+only `research-mode.ts` is loaded — `quorum.ts` is **not** present, so no peer
+spawns. Do not wait for one. Instead, note in your verdict that quorum was
+unavailable (single-reviewer) so the dispatcher knows to seek a second opinion.
 
 If the prompt you received contains the token `QUORUM_PEER` (case-sensitive),
 you are already a peer reviewer. Skip this step entirely to prevent recursion.

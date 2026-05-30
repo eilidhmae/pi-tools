@@ -31,7 +31,9 @@
 #   scripts/bash/adversary-loop.sh               → scripts/adversary-loop.sh
 #   scripts/bash/capture-review.sh               → scripts/capture-review.sh
 #   scripts/bash/gen-review-revise.sh            → scripts/gen-review-revise.sh
+#   scripts/bash/drift-check.sh                  → scripts/drift-check.sh
 #   scripts/ts/capture-review.ts                 → scripts/ts/capture-review.ts
+#   scripts/ts/drift-check.ts                    → scripts/ts/drift-check.ts
 #
 # Also chmod+x the in-repo server launcher (not installed elsewhere —
 # invoke it directly from the pi-tools checkout):
@@ -209,6 +211,17 @@ chmod +x "${SCRIPTS_DIR}/capture-review.sh"
 install_file \
   "$SCRIPT_DIR/scripts/ts/capture-review.ts" \
   "${SCRIPTS_DIR}/ts/capture-review.ts"
+
+# drift-check.sh (Stage 1a of adversary-pass.sh) re-checks a written review for
+# prose/YAML drift; it delegates to scripts/ts/drift-check.ts. Install both, or
+# adversary-pass.sh's drift check silently no-ops on a global install.
+install_file \
+  "$SCRIPT_DIR/scripts/bash/drift-check.sh" \
+  "${SCRIPTS_DIR}/drift-check.sh"
+chmod +x "${SCRIPTS_DIR}/drift-check.sh"
+install_file \
+  "$SCRIPT_DIR/scripts/ts/drift-check.ts" \
+  "${SCRIPTS_DIR}/ts/drift-check.ts"
 
 install_file \
   "$SCRIPT_DIR/scripts/bash/gen-review-revise.sh" \
