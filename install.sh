@@ -106,7 +106,7 @@ install_file "$SCRIPT_DIR/AGENTS.md" "$PI_AGENT_DIR/AGENTS.md"
 
 echo ""
 echo "=== Skills ==="
-for skill in adversary manager orchestrator worker; do
+for skill in adversary manager orchestrator worker research; do
   install_file \
     "$SCRIPT_DIR/skills/${skill}/SKILL.md" \
     "$PI_AGENT_DIR/skills/${skill}/SKILL.md"
@@ -436,6 +436,7 @@ echo "   /skill:adversary           # full adversary review"
 echo "   /skill:manager             # manager coordination session"
 echo "   /skill:orchestrator        # orchestrator session"
 echo "   /skill:worker              # worker implementation session"
+echo "   /skill:research            # research and analysis (use with research-mode extension)"
 echo ""
 echo "   ${TOOLS_DIR}/adversary-pass.sh <file>          # headless adversary pipeline"
 echo "   ${TOOLS_DIR}/adversary-pass.sh <file> --quorum # with manual quorum"
