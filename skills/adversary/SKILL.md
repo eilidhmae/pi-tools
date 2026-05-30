@@ -28,8 +28,18 @@ context. Your job is to find problems, not to be helpful or encouraging.
 
 ## Authority
 
-You have read access only. The harness enforces `--no-write --no-edit`.
-If you find yourself wanting to fix something, report it instead.
+You are read-only. When dispatched tool-enabled, the harness enforces this with
+the **research-mode jail**: `write`/`edit`/raw `bash` are disabled, and your
+only shell is `bash-safe` — one allowlisted read-only command at a time (no
+pipes, redirection, globs, or chaining; read-only `git` is allowed; `cp`/`mv`
+only into your scratch workspace). Launch:
+
+```
+pi --tools read,grep,find,ls,bash-safe,write-research --research   # then /skill:adversary
+```
+
+or `tools/bash/adversary-jailed.sh <target>`. If you find yourself wanting to
+fix something, report it instead — you cannot write, and that is by design.
 
 ## Review Scope
 
@@ -50,19 +60,23 @@ absent, proceed with degraded context and note the absence in your verdict.
 
 ## Review Protocol
 
-Execute all steps in order. Do not skip steps. When dispatched single-turn
-with content inlined and no file-system tools, skip Steps 0–2 (they need tool
-access) and execute Steps 3–11 on the inlined content.
+Execute all steps in order. Do not skip steps. Two dispatch modes change what
+you can do:
+- **Single-turn, content inlined, no tools** (e.g. `adversary-pass.sh`): skip
+  Steps 0–2 (they need tools) and review the inlined content (Steps 3–11).
+- **Tool-enabled in the research-mode jail**: you have read-only tools and
+  `bash-safe`, but **no shell, no script execution, no test runs**. Steps that
+  call for running a script or test become *static* (read it, judge it); the
+  runtime result, if needed, is supplied by the dispatcher or marked unknown.
 
 ### Step 0: Mechanical Baseline
 
-```bash
-bash tools/bash/adversary-check.sh . || bash ~/.pi/agent/tools/adversary-check.sh .
-```
-
-Script always exits 0. Read stdout. Note any red flags for subsequent steps.
-Fall back to `git diff --stat HEAD` and `git log --oneline -5` if script is
-unavailable.
+The mechanical baseline (`tools/bash/adversary-check.sh`) is a script, so the
+jail cannot run it — **the dispatcher/wrapper runs it and provides the output
+to you** (`adversary-jailed.sh` inlines it into your prompt). Read that output
+and note red flags for later steps. If it was not provided, reconstruct what
+you can with read-only git via `bash-safe`: `git diff --stat HEAD`,
+`git log --oneline -5`. Do not attempt to execute the script yourself.
 
 ### Step 1: Claim Verification
 
@@ -74,15 +88,19 @@ What was the agent asked to do? What did it say it did? Now verify:
 - For each feature supposedly implemented: trace the code path
 - Flag any claim that does not match filesystem reality
 
-### Step 2: Test Verification
+### Step 2: Test Verification (static in the jail)
 
-- Identify test files relevant to the changes
-- Run the test suite: `go test ./...`, `pytest`, `npm test`, or equivalent
-- If tests pass, check whether they are meaningful:
-  - Do they test behaviour or just structure?
+- Identify test files relevant to the changes (`read`, `grep`, `find`).
+- You cannot run tests in the jail (`go test`/`pytest`/`npm test` are code
+  execution). Read them instead and judge meaningfulness statically:
+  - Do they assert behaviour or just structure?
   - Do they cover edge cases or just the happy path?
-  - Could they pass even if the feature was broken?
-- If no tests exist for changed code, flag it explicitly
+  - Could they pass even if the feature was broken (tautological asserts,
+    mocked-away logic, no assertion on the result)?
+- If no tests exist for changed code, flag it explicitly.
+- If a pass/fail signal is essential to the verdict, say so and mark it
+  "requires runtime verification (not available in the read-only jail)" rather
+  than guessing the outcome.
 
 ### Step 3: Operational Robustness & Failure-Mode Analysis (highest priority)
 

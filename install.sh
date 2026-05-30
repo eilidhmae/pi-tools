@@ -26,6 +26,7 @@
 #   extensions/lib/*.ts                        → extensions/lib/*.ts  (helper modules)
 #   tools/bash/adversary-check.sh              → tools/adversary-check.sh
 #   tools/bash/adversary-pass.sh               → tools/adversary-pass.sh
+#   tools/bash/adversary-jailed.sh             → tools/adversary-jailed.sh
 #   tools/bash/adversary-scan.sh               → tools/adversary-scan.sh
 #   tools/bash/adversary-loop.sh               → tools/adversary-loop.sh
 #   tools/bash/capture-review.sh               → tools/capture-review.sh
@@ -175,6 +176,12 @@ install_file \
   "$SCRIPT_DIR/tools/bash/adversary-pass.sh" \
   "${TOOLS_DIR}/adversary-pass.sh"
 chmod +x "${TOOLS_DIR}/adversary-pass.sh"
+
+# Tool-enabled adversary inside the research-mode jail (read-only + bash-safe).
+install_file \
+  "$SCRIPT_DIR/tools/bash/adversary-jailed.sh" \
+  "${TOOLS_DIR}/adversary-jailed.sh"
+chmod +x "${TOOLS_DIR}/adversary-jailed.sh"
 
 install_file \
   "$SCRIPT_DIR/tools/bash/adversary-scan.sh" \
