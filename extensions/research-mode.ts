@@ -6,7 +6,8 @@
  * What it does, and how:
  *  - Registers two custom tools at load time so the `--tools` allowlist can
  *    admit them: `write-research` (writes only inside the workspace) and
- *    `bash-safe` (best-effort read-only shell).
+ *    `bash-safe` (an ALLOW-ONLY runner — one allowlisted read-only command,
+ *    executed directly with no shell; cp/mv only into the workspace).
  *  - `/research-mode` activates the jail mid-session. On activation it
  *    restricts the active tool set to read-only built-ins + the two research
  *    tools (dropping write/edit/bash) and injects a RESEARCH MODE block into
@@ -34,8 +35,8 @@
  *    session start; the only way to enter research mode in print/`-p` mode).
  */
 
-import { mkdir, writeFile, realpath, lstat } from "node:fs/promises";
-import { dirname, sep } from "node:path";
+import { mkdir, writeFile, realpath, lstat, stat } from "node:fs/promises";
+import { dirname, sep, join, isAbsolute } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for unit testing; no pi runtime dependency).
@@ -78,83 +79,136 @@ export function assessProtection(available: string[]): {
 }
 
 /**
- * Return a reason string if `command` is unsafe for read-only research, or
- * null if it is allowed. This is a DENYLIST and therefore best-effort — the
- * real boundary is `--tools` excluding `bash` entirely. `mktemp -d` is allowed
- * as a vetted exception so the agent can make scratch directories.
+ * ALLOW-ONLY command model for the safe-run tool.
+ *
+ * The agent's command is NOT handed to a shell. We tokenize it ourselves,
+ * reject every shell metacharacter (so there is no redirection, pipe, command
+ * substitution, glob, or chaining to interpret), require the program to be on
+ * an allowlist of read-only binaries, and run it directly via exec(argv).
+ * This is fail-safe by construction: an un-listed program cannot run, and a
+ * listed one cannot reach the shell. The only writers permitted are `cp`/`mv`,
+ * and only when their destination resolves inside the workspace.
  */
-export function bashSafetyError(command: string): string | null {
-  const cmd = command.trim();
 
-  // Vetted exception: mktemp for scratch dirs, with strict flags.
-  if (/^mktemp\b/.test(cmd) || /\bmktemp\b/.test(cmd)) {
-    if (/\s-u\b/.test(cmd)) return "mktemp -u (dry-run) is not allowed";
-    if (!/\s-d\b/.test(cmd)) return "mktemp must use -d (directory) flag";
-    if (!/\s-t\b/.test(cmd) && !/\s-p\b/.test(cmd)) return "mktemp must use -t (prefix) or -p (tmpdir) flag";
-    const prefix = cmd.match(/-t\s+([^\s-]+)/);
-    if (prefix && !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(prefix[1])) {
-      return "mktemp prefix must start with a letter and be alphanumeric/_/- only";
+/** Read-only programs. None can write files or spawn a shell on their own. */
+export const READONLY_COMMANDS = new Set([
+  "cat", "head", "tail", "wc", "stat", "file", "ls", "tree", "du", "df",
+  "sort", "uniq", "cut", "comm", "diff", "cmp", "grep", "egrep", "fgrep", "rg",
+  "find", "date", "basename", "dirname", "realpath", "readlink", "echo",
+  "printf", "nl", "fold", "rev", "tac", "paste", "join", "seq", "expand",
+  "unexpand", "fmt", "column", "pwd", "env", "printenv", "which", "type",
+  "uname", "hostname", "id", "whoami", "ps", "true", "false", "test",
+  "sha256sum", "sha1sum", "shasum", "md5", "md5sum", "cksum",
+  "hexdump", "xxd", "od", "strings", "jq", "yq",
+]);
+/** find actions that write or execute — rejected even though find is allowed. */
+const FIND_WRITE_ACTIONS = new Set(["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprintf", "-fls"]);
+/** git subcommands that only read. */
+export const GIT_READONLY_SUBCOMMANDS = new Set([
+  "log", "show", "diff", "status", "blame", "ls-files", "ls-tree", "cat-file",
+  "rev-parse", "rev-list", "describe", "shortlog", "grep", "reflog", "whatchanged",
+  "show-ref", "for-each-ref", "name-rev", "merge-base", "remote", "branch", "tag", "config",
+]);
+/** Programs that write but only into the workspace (destination validated). */
+const COPY_COMMANDS = new Set(["cp", "mv"]);
+
+/**
+ * Tokenize a command line into argv WITHOUT a shell. Supports single/double
+ * quotes; rejects any shell-significant character outside quotes (so nothing
+ * is left for a shell to interpret) and rejects `$`/backtick even inside double
+ * quotes (substitution). Returns argv or an error.
+ */
+export function parseCommand(command: string): { argv: string[] } | { error: string } {
+  const argv: string[] = [];
+  let cur = "";
+  let curStarted = false;
+  let i = 0;
+  // Chars a shell would act on: pipes/redirection/subshell/glob/chaining. We
+  // never invoke a shell, so these can only mean the agent wants behavior we
+  // don't provide — reject with guidance. ($/backtick/\\ handled separately.)
+  // '~' and '!' are allowed as literals (e.g. HEAD~1, `find ! -name`).
+  const meta = "|&;<>()*?[\n\r";
+  while (i < command.length) {
+    const ch = command[i];
+    if (ch === "'") {
+      curStarted = true;
+      i++;
+      while (i < command.length && command[i] !== "'") cur += command[i++];
+      if (i >= command.length) return { error: "unterminated single quote" };
+      i++; // closing '
+      continue;
     }
-    return null;
+    if (ch === '"') {
+      curStarted = true;
+      i++;
+      while (i < command.length && command[i] !== '"') {
+        if (command[i] === "$" || command[i] === "`" || command[i] === "\\") {
+          return { error: "variable/command substitution and escapes are not allowed" };
+        }
+        cur += command[i++];
+      }
+      if (i >= command.length) return { error: "unterminated double quote" };
+      i++; // closing "
+      continue;
+    }
+    if (ch === " " || ch === "\t") {
+      if (curStarted) { argv.push(cur); cur = ""; curStarted = false; }
+      i++;
+      continue;
+    }
+    if (ch === "$" || ch === "`" || ch === "\\") {
+      return { error: "variable/command substitution and escapes are not allowed" };
+    }
+    if (meta.includes(ch)) {
+      return { error: `'${ch}' is not allowed — run one read-only command at a time (no pipes, redirection, globs, or chaining)` };
+    }
+    cur += ch;
+    curStarted = true;
+    i++;
   }
+  if (curStarted) argv.push(cur);
+  if (argv.length === 0) return { error: "empty command" };
+  return { argv };
+}
 
-  const blocked: Array<[RegExp, string]> = [
-    // Any '>' is treated as a write/redirect (incl. 2>file, &>, >|, >&). A
-    // read-only command has no legitimate need for it; fail safe.
-    [/>/, "output redirection ('>') is not allowed"],
-    // File mutation utilities.
-    [/\brm\b/, "rm is not allowed"],
-    [/\bmv\b/, "mv is not allowed"],
-    [/\b(cp|scp|rsync|sftp)\b/, "file-copy commands are not allowed"],
-    [/\btouch\b/, "touch is not allowed"],
-    [/\btruncate\b/, "truncate is not allowed"],
-    // tee only matters as a writer when fed a pipe (`cmd | tee file`); matching
-    // it as a bare word would block reading a file whose name contains "tee".
-    [/(^|\|)\s*tee\b/, "tee writes files; not allowed"],
-    [/\bdd\b/, "dd is not allowed"],
-    [/\bln\b/, "ln is not allowed"],
-    [/\bmkdir\b/, "mkdir is not allowed (use write-research)"],
-    [/\bmkfifo\b/, "mkfifo is not allowed"],
-    [/\bchmod\b/, "chmod is not allowed"],
-    [/\bchown\b/, "chown is not allowed"],
-    [/\bchflags\b/, "chflags is not allowed"],
-    // Network fetchers that write files. Matched in command position so a file
-    // named e.g. wget.log can still be read.
-    [/(^|[;&|]\s*)wget\b/, "wget downloads/writes files; not allowed"],
-    [/\bcurl\b[^|]*\s-(o|O|-output)\b/, "curl -o/-O writes files; not allowed"],
-    // In-place editors / stream-edit-in-place.
-    [/\b(vim?|nano|emacs|ed|pico)\b/, "interactive editors are not allowed"],
-    [/\bsed\b[^|]*\s-i\b/, "sed -i edits in place; not allowed"],
-    [/\bperl\b[^|]*\s-i/, "perl -i edits in place; not allowed"],
-    // find that writes/executes.
-    [/\bfind\b[^|]*-delete\b/, "find -delete is not allowed"],
-    [/\bfind\b[^|]*-exec\b/, "find -exec is not allowed (could mutate)"],
-    [/\bfind\b[^|]*-fprint/, "find -fprint writes files; not allowed"],
-    // xargs feeding a mutator.
-    [/\bxargs\b[^|]*\b(rm|mv|cp|tee|dd|truncate|chmod|chown|ln)\b/, "xargs into a mutating command is not allowed"],
-    // Package managers / installers.
-    [/\bnpm\s+(install|i|add|remove|rm|unlink|update|ci)\b/, "npm mutation is not allowed"],
-    [/\b(yarn|pnpm)\s+(add|remove|up|update|install)\b/, "yarn/pnpm mutation is not allowed"],
-    [/\bpip3?\s+(install|uninstall|upgrade)\b/, "pip mutation is not allowed"],
-    [/\bcargo\s+(install|update|add|remove)\b/, "cargo mutation is not allowed"],
-    [/\b(brew|apt|apt-get|yum|dnf|port)\s+(install|remove|upgrade|update)\b/, "system package mutation is not allowed"],
-    // git mutations.
-    [/\bgit\s+(commit|push|add|rm|mv|reset|restore|checkout|switch|merge|rebase|apply|stash|clean|tag|branch\s+-[dD]|config)\b/, "git mutation is not allowed"],
-    // Interpreters invoked with an eval flag can write files arbitrarily.
-    [/\b(python3?|node|ruby|perl|php)\b[^|]*\s-(c|e)\b/, "running an interpreter with -c/-e is not allowed"],
-    // Privilege / piping into a shell / network-to-shell.
-    [/\bsudo\b/, "sudo is not allowed"],
-    [/\bdoas\b/, "doas is not allowed"],
-    [/\|\s*(sh|bash|zsh|python3?|node|perl|ruby)\b/, "piping into an interpreter is not allowed"],
-    [/\b(curl|wget|fetch)\b[^|]*\|\s*(sh|bash)\b/, "downloading into a shell is not allowed"],
-    // Here-docs/here-strings (can write files).
-    [/<<-?\s*['"]?[A-Za-z_]/, "here-documents are not allowed"],
-  ];
-
-  for (const [re, reason] of blocked) {
-    if (re.test(cmd)) return reason;
+/**
+ * Classify a parsed argv. Returns the program category, or an error if the
+ * program is not allowed / used in a write-capable way. For copy commands the
+ * destination (last argument) is returned for the caller to validate against
+ * the workspace.
+ */
+export function classifyCommand(argv: string[]): { kind: "readonly" } | { kind: "copy"; dest: string } | { error: string } {
+  const bin = (argv[0].split("/").pop() || argv[0]);
+  if (READONLY_COMMANDS.has(bin)) {
+    if (bin === "find" && argv.some((a) => FIND_WRITE_ACTIONS.has(a))) {
+      return { error: "find with -exec/-delete/-fprint (write or execute actions) is not allowed" };
+    }
+    if (bin === "git") return { error: "git is handled separately" }; // (git not in READONLY set)
+    return { kind: "readonly" };
   }
-  return null;
+  if (bin === "git") {
+    const sub = argv.slice(1).find((a) => !a.startsWith("-"));
+    if (!sub || !GIT_READONLY_SUBCOMMANDS.has(sub)) {
+      return { error: `git '${sub ?? ""}' is not a read-only subcommand` };
+    }
+    // Guard the few read subcommands that have write-capable option forms.
+    if (sub === "config" && !argv.some((a) => a === "--get" || a === "--list" || a === "-l" || a === "--get-all")) {
+      return { error: "git config is only allowed with --get/--get-all/--list" };
+    }
+    if ((sub === "branch" || sub === "tag") && !argv.some((a) => a === "--list" || a === "-l") && argv.slice(2).some((a) => !a.startsWith("-"))) {
+      return { error: `git ${sub} is only allowed in list form (--list)` };
+    }
+    return { kind: "readonly" };
+  }
+  if (COPY_COMMANDS.has(bin)) {
+    if (argv.some((a) => a === "-t" || a === "--target-directory")) {
+      return { error: `${bin} -t/--target-directory is not allowed (destination must be the final argument)` };
+    }
+    const operands = argv.slice(1).filter((a) => !a.startsWith("-"));
+    if (operands.length < 2) return { error: `${bin} needs a source and a destination` };
+    return { kind: "copy", dest: operands[operands.length - 1] };
+  }
+  return { error: `'${bin}' is not an allowed command. Allowed: read-only tools (cat, ls, grep, find, wc, stat, diff, sort, jq, …), read-only git, and cp/mv into the workspace.` };
 }
 
 /** The RESEARCH MODE block prepended to the system prompt while jailed. */
@@ -166,16 +220,19 @@ export function buildResearchSystemPrompt(workspace: string): string {
     "",
     "What you MAY do:",
     "- Read/inspect any file with `read`, `grep`, `find`, `ls`.",
-    "- Run read-only shell commands with the `bash-safe` tool.",
-    `- Write notes, scripts, prototypes, and snapshots ONLY inside your`,
-    `  isolated workspace via the \`write-research\` tool.`,
+    "- Run ONE read-only command per call with `bash-safe` (no shell: no pipes,",
+    "  redirection, globs, or chaining — use `grep`/`find` directly). It also",
+    "  permits read-only `git` and `cp`/`mv` whose destination is the workspace.",
+    "- Write notes, scripts, prototypes, and snapshots ONLY inside your",
+    "  isolated workspace via the `write-research` tool.",
     "",
     "What you MUST NOT do:",
     "- Do NOT modify, create, or delete files in the repository.",
     "- The `write` and `edit` tools and raw `bash` are disabled; if you reach",
     "  for them, use `write-research` / `bash-safe` instead.",
-    "- To test a change to a repo file, copy it into the workspace with",
-    "  `write-research`, modify the copy, and experiment there.",
+    "- To test a change to a repo file, copy it into the workspace (`cp <file>",
+    "  <workspace>` via bash-safe, or recreate it with write-research), modify",
+    "  the copy, and experiment there.",
     "",
     `Your workspace (the ONLY writable location): ${workspace}`,
     "Reference files there by relative path (e.g. `notes.md`) with write-research.",
@@ -233,6 +290,28 @@ export async function writeIntoWorkspace(
   }
 }
 
+/**
+ * True if a cp/mv destination would write inside `workspace`. The container is
+ * the destination itself when it is an existing directory, else its parent
+ * dir; that container's real path must be within the workspace's real path.
+ */
+export async function destInWorkspace(dest: string, workspace: string, cwd: string): Promise<boolean> {
+  const abs = isAbsolute(dest) ? dest : join(cwd, dest);
+  let container = abs;
+  try {
+    if (!(await stat(abs)).isDirectory()) container = dirname(abs);
+  } catch {
+    container = dirname(abs);
+  }
+  try {
+    const rc = await realpath(container);
+    const rw = await realpath(workspace);
+    return rc === rw || rc.startsWith(rw + sep);
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Extension
 // ---------------------------------------------------------------------------
@@ -285,33 +364,51 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // --- bash-safe -------------------------------------------------------------
+  // --- bash-safe (allow-only command runner; NO shell) -----------------------
   pi.registerTool({
     name: "bash-safe",
     label: "bash-safe",
     description:
-      "Run a READ-ONLY shell command. File-mutating commands, redirection, " +
-      "package managers, git mutations, editors, sudo, and pipe-to-shell are " +
-      "blocked. Allowed exception: `mktemp -d -t <prefix>`. Use for ls, cat, " +
-      "grep, find, stat, head, tail, wc, tree, du, ps, etc.",
-    promptSnippet: "bash-safe: run read-only shell commands (mutations and redirection are blocked)",
+      "Run ONE read-only command. There is NO shell: no pipes, redirection, " +
+      "globs, command substitution, or chaining (run a single command per call). " +
+      "Allowed: read-only tools (cat, head, tail, wc, stat, file, ls, tree, du, " +
+      "sort, uniq, cut, diff, cmp, grep, rg, find, jq, xxd, strings, sha256sum, " +
+      "…), read-only git (log, show, diff, status, blame, ls-files, …), and " +
+      "cp/mv whose destination is inside the research workspace. Anything else " +
+      "is rejected. Use grep/find directly instead of piping.",
+    promptSnippet: "bash-safe: run ONE allowlisted read-only command (no shell, no pipes); cp/mv only into the workspace",
     promptGuidelines: [
-      "Use bash-safe instead of bash; it permits inspection but blocks anything that writes files.",
+      "bash-safe runs a single program directly with no shell — no pipes/redirection/globs. Use `grep pattern file`, `sort -u file`, `find <dir> -name '...'` rather than chaining.",
+      "To bring a repo file into the workspace, use `cp <src> <workspace>/...`; to write new content use write-research.",
     ],
     parameters: {
       type: "object",
       properties: {
-        command: { type: "string", description: "Read-only shell command to run." },
+        command: { type: "string", description: "A single read-only command, e.g. \"grep -n foo src/x.go\". No pipes/redirection/globs." },
         description: { type: "string", description: "Brief description of the command." },
       },
       required: ["command"],
     },
-    execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
-      const reason = bashSafetyError(params.command);
-      if (reason) {
-        return { content: [{ type: "text", text: `BLOCKED (${reason}). Use read-only commands; write files with write-research.` }], isError: true };
+    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+      if (!researchActive || !workspace) {
+        return { content: [{ type: "text", text: "Error: research mode is not active." }], isError: true };
       }
-      const res = await piExec("bash", ["-c", params.command]);
+      const parsed = parseCommand(params.command);
+      if ("error" in parsed) {
+        return { content: [{ type: "text", text: `Rejected: ${parsed.error}` }], isError: true };
+      }
+      const cls = classifyCommand(parsed.argv);
+      if ("error" in cls) {
+        return { content: [{ type: "text", text: `Rejected: ${cls.error}` }], isError: true };
+      }
+      if (cls.kind === "copy") {
+        const okDest = await destInWorkspace(cls.dest, workspace, ctx.cwd);
+        if (!okDest) {
+          return { content: [{ type: "text", text: `Rejected: destination "${cls.dest}" is not inside the workspace (${workspace}). cp/mv may only write into the workspace.` }], isError: true };
+        }
+      }
+      // Run the program directly — no shell is involved.
+      const res = await piExec(parsed.argv[0], parsed.argv.slice(1));
       const body = res.stdout || res.stderr || "(no output)";
       const text = res.code === 0 ? body : `${body}\n[exit code ${res.code}]`;
       return { content: [{ type: "text", text }], isError: res.code !== 0 };
