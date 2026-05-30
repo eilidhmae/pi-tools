@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+*.bak
 .venv/
 server/mlx-lm-multi/pids/
 server/mlx-lm-multi/logs/
@@ -7,4 +8,4 @@ server/mola/pids/
 server/mola/logs/
 .DS_Store
 reviews/
-
+node_modules/
