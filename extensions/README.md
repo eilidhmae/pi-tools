@@ -11,6 +11,9 @@ Activates research mode automatically on session start. Best for dedicated resea
 **Usage:**
 ```bash
 pi -e extensions/research-mode.ts -p "Analyze this codebase"
+
+# Or combine with the research skill for grounded analysis:
+pi -e extensions/research-mode.ts /skill:research "How does authentication work?"
 ```
 
 **Features:**
@@ -18,6 +21,7 @@ pi -e extensions/research-mode.ts -p "Analyze this codebase"
 - Displays temp path prominently in widget and footer
 - Provides `write-research` and `bash-safe` tools
 - Commands: `/research-list`, `/research-open`, `/research-path`, `/research-summary`
+- Works seamlessly with `/skill:research` for grounded, evidence-based analysis
 
 ### 2. `research-mode-command.ts` - Slash Command Research Mode
 
@@ -36,6 +40,9 @@ pi -e extensions/research-mode-command.ts
 /research-mode open         # Open research directory in file browser
 /research-mode path         # Copy research directory path to clipboard
 /research-mode summary      # Show summary of research files
+
+# Combine with research skill:
+/skill:research "Trace the data flow through the API layer"
 ```
 
 **Features:**
