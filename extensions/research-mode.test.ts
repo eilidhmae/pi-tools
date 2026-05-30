@@ -89,6 +89,12 @@ for (const c of [
   "tee f", "dd if=/dev/zero of=f", "chmod +x f", "perl -i f", "xargs rm",
   "git push", "git commit -m x", "git checkout .", "git config user.name x",
   "find . -delete", "find . -exec rm {} ;",
+  // jailbreaks closed in the 2026-05-30 security pass (adversarial review):
+  "env sh -c x", "env PROG", "printenv",     // env/printenv exec arbitrary programs
+  "git remote add origin http://x", "git remote update", // remote writes .git/config / fetches
+  "git reflog expire --all",                 // reflog expire deletes history
+  "yq -i .x=1 f.yaml", "yq --inplace .x f",  // yq in-place file write
+  "find . -fprint0 /tmp/x",                  // find write action not previously listed
 ]) {
   ok("error" in cls(c), `classify REJECT: ${c}`);
 }

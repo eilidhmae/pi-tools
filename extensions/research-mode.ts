@@ -96,19 +96,24 @@ export const READONLY_COMMANDS = new Set([
   "sort", "uniq", "cut", "comm", "diff", "cmp", "grep", "egrep", "fgrep", "rg",
   "find", "date", "basename", "dirname", "realpath", "readlink", "echo",
   "printf", "nl", "fold", "rev", "tac", "paste", "join", "seq", "expand",
-  "unexpand", "fmt", "column", "pwd", "env", "printenv", "which", "type",
+  "unexpand", "fmt", "column", "pwd", "which", "type",
   "uname", "hostname", "id", "whoami", "ps", "true", "false", "test",
   "sha256sum", "sha1sum", "shasum", "md5", "md5sum", "cksum",
   "hexdump", "xxd", "od", "strings", "jq", "yq",
 ]);
+// NOTE: `env`/`printenv` are deliberately NOT allowed — `env PROG ...` execs an
+// arbitrary program (e.g. `env sh -c '…'`), which defeats the no-shell jail.
 /** find actions that write or execute — rejected even though find is allowed. */
-const FIND_WRITE_ACTIONS = new Set(["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprintf", "-fls"]);
+const FIND_WRITE_ACTIONS = new Set(["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf", "-fls"]);
 /** git subcommands that only read. */
 export const GIT_READONLY_SUBCOMMANDS = new Set([
   "log", "show", "diff", "status", "blame", "ls-files", "ls-tree", "cat-file",
-  "rev-parse", "rev-list", "describe", "shortlog", "grep", "reflog", "whatchanged",
-  "show-ref", "for-each-ref", "name-rev", "merge-base", "remote", "branch", "tag", "config",
+  "rev-parse", "rev-list", "describe", "shortlog", "grep", "whatchanged",
+  "show-ref", "for-each-ref", "name-rev", "merge-base", "branch", "tag", "config",
 ]);
+// NOTE: `remote` and `reflog` are deliberately NOT read-only — `git remote add`
+// writes .git/config, `git remote update` fetches, `git reflog expire` deletes
+// history. Their read forms aren't worth a sub-subcommand guard here.
 /** Programs that write but only into the workspace (destination validated). */
 const COPY_COMMANDS = new Set(["cp", "mv"]);
 
@@ -182,6 +187,9 @@ export function classifyCommand(argv: string[]): { kind: "readonly" } | { kind: 
   if (READONLY_COMMANDS.has(bin)) {
     if (bin === "find" && argv.some((a) => FIND_WRITE_ACTIONS.has(a))) {
       return { error: "find with -exec/-delete/-fprint (write or execute actions) is not allowed" };
+    }
+    if (bin === "yq" && argv.some((a) => a === "-i" || a === "--inplace")) {
+      return { error: "yq -i/--inplace edits files in place and is not allowed" };
     }
     if (bin === "git") return { error: "git is handled separately" }; // (git not in READONLY set)
     return { kind: "readonly" };
@@ -546,19 +554,23 @@ export default function (pi: ExtensionAPI) {
 
       if (["list", "open", "path", "summary"].includes(sub)) {
         if (!researchActive || !workspace) { notify(ctx, "Research mode is not active.", "error"); return; }
+        // workspace is passed as an argv argument (never interpolated into a
+        // shell string) so a path containing shell metacharacters cannot inject.
         if (sub === "list") {
-          const r = await piExec("bash", ["-c", `ls -la "${workspace}" 2>/dev/null || echo "(empty)"`]);
-          notify(ctx, `Workspace (${workspace}):\n${r.stdout}`, "info");
+          const r = await piExec("ls", ["-la", workspace]);
+          notify(ctx, `Workspace (${workspace}):\n${r.stdout.trim() || "(empty)"}`, "info");
         } else if (sub === "open") {
           const opener = process.platform === "darwin" ? "open" : "xdg-open";
           await piExec(opener, [workspace]);
           notify(ctx, `Opened ${workspace}`, "info");
         } else if (sub === "path") {
-          if (process.platform === "darwin") await piExec("bash", ["-c", `printf %s "${workspace}" | pbcopy`]);
+          // (clipboard copy dropped — it required piping the path through a
+          // shell, which reintroduced an injection vector; the path is shown.)
           notify(ctx, `Workspace path: ${workspace}`, "info");
         } else if (sub === "summary") {
-          const r = await piExec("bash", ["-c", `find "${workspace}" -type f -exec ls -lh {} \\; 2>/dev/null | head -20`]);
-          notify(ctx, r.stdout.trim() ? `Files:\n${r.stdout}` : "No files written yet.", "info");
+          const r = await piExec("find", [workspace, "-type", "f"]);
+          const files = r.stdout.split("\n").filter(Boolean).slice(0, 20).join("\n");
+          notify(ctx, files ? `Files:\n${files}` : "No files written yet.", "info");
         }
         return;
       }
@@ -597,6 +609,9 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async (event, ctx) => {
+    // Clear the same-process signal so a later session in this process (e.g.
+    // after /reload) is not misread as research-active by other extensions.
+    delete process.env.PI_RESEARCH_MODE_ACTIVE;
     if (researchActive && workspace) {
       // A reload spins up a fresh extension instance with researchActive=false
       // and does not re-trigger auto-activation, so the jail silently drops.
