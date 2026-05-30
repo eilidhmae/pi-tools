@@ -130,14 +130,17 @@ install_file \
   "$SCRIPT_DIR/extensions/quorum.ts" \
   "$PI_AGENT_DIR/extensions/quorum.ts"
 
-# Research mode extensions (optional, for secure read-only scanning)
+# Research mode extension (read-only jail with isolated write workspace).
+# Single self-contained extension: provides write-research + bash-safe tools,
+# the /research-mode command, system-prompt injection, and tool enforcement.
 install_file \
   "$SCRIPT_DIR/extensions/research-mode.ts" \
   "$PI_AGENT_DIR/extensions/research-mode.ts"
 
+# Research mode documentation
 install_file \
-  "$SCRIPT_DIR/extensions/research-mode-command.ts" \
-  "$PI_AGENT_DIR/extensions/research-mode-command.ts"
+  "$SCRIPT_DIR/extensions/RESEARCH-MODE.md" \
+  "$PI_AGENT_DIR/extensions/RESEARCH-MODE.md"
 
 # Library modules imported by the real extensions: live under
 # extensions/lib/ so pi's flat-glob extension discovery does NOT try to
@@ -454,18 +457,24 @@ echo " Extensions active in all pi sessions:"
 echo "   adversary-hook.ts  (mechanical check after every write/edit)"
 echo "   quorum.ts          (auto-quorum on CONCERNS/FAIL verdicts)"
 echo ""
-echo " Optional research extensions (use with -e flag):"
-echo "   research-mode.ts           (auto-activate on session start)"
-echo "     pi --tools read,grep,find,ls -e ~/.pi/agent/extensions/research-mode.ts -p 'Analyze'"
+echo " Research mode (read-only jail) — research-mode.ts, auto-discovered:"
+echo "   Strongest (harness-level) invocation:"
+echo "     pi --tools read,grep,find,ls,write-research,bash-safe"
+echo "     Then type: /research-mode   (sets up workspace + jails the agent)"
 echo ""
-echo "   research-mode-command.ts   (on-demand via /research-mode)"
-echo "     pi --tools read,grep,find,ls -e ~/.pi/agent/extensions/research-mode-command.ts"
-echo "     Then type: /research-mode  (to activate mid-session)"
+echo "   write-research and bash-safe MUST be in --tools — pi's allowlist drops"
+echo "   any tool not listed, and the extension cannot restore it at runtime."
 echo ""
-echo "   The --tools flag restricts built-in tools to read-only. The extensions"
-echo "   add write-research and bash-safe as safe alternatives."
+echo "   /research-mode also works without --tools (it deactivates write/edit/bash"
+echo "   itself and warns), and one-shot/print runs can auto-activate with --research:"
+echo "     pi --tools read,grep,find,ls,write-research,bash-safe --research -p 'Analyze'"
 echo ""
-echo " See extensions/README.md for full documentation."
+echo "   PI_RESEARCH_WORKSPACE=/path persists/resumes a workspace across sessions"
+echo "   (also auto-activates research mode at startup)."
+echo ""
+echo "   See ~/.pi/agent/extensions/RESEARCH-MODE.md for full documentation."
+echo ""
+echo "   Use /skill:research for research-mode sessions (grounded, evidence-based analysis)."
 echo ""
 echo " qwen3-coder note:"
 echo "   Non-thinking mode only — no <think> blocks."
