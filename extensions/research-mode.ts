@@ -7,7 +7,7 @@
  *  - Registers two custom tools at load time so the `--tools` allowlist can
  *    admit them: `write-research` (writes only inside the workspace) and
  *    `bash-safe` (an ALLOW-ONLY runner — one allowlisted read-only command,
- *    executed directly with no shell; cp/mv only into the workspace).
+ *    executed directly with no shell; cp only into the workspace).
  *  - `/research-mode` activates the jail mid-session. On activation it
  *    restricts the active tool set to read-only built-ins + the two research
  *    tools (dropping write/edit/bash) and injects a RESEARCH MODE block into
@@ -86,23 +86,28 @@ export function assessProtection(available: string[]): {
  * substitution, glob, or chaining to interpret), require the program to be on
  * an allowlist of read-only binaries, and run it directly via exec(argv).
  * This is fail-safe by construction: an un-listed program cannot run, and a
- * listed one cannot reach the shell. The only writers permitted are `cp`/`mv`,
- * and only when their destination resolves inside the workspace.
+ * listed one cannot reach the shell. The only writer permitted is `cp`, and
+ * only when its destination resolves inside the workspace. (`mv` is NOT
+ * allowed — it deletes the source, a write to the repo.) Flags that turn an
+ * otherwise read-only program into a writer/executor are rejected globally
+ * (DANGEROUS_FLAGS) or per-program (find/sort/git/yq guards below).
  */
 
 /** Read-only programs. None can write files or spawn a shell on their own. */
 export const READONLY_COMMANDS = new Set([
-  "cat", "head", "tail", "wc", "stat", "file", "ls", "tree", "du", "df",
+  "cat", "head", "tail", "wc", "stat", "file", "ls", "du", "df",
   "sort", "uniq", "cut", "comm", "diff", "cmp", "grep", "egrep", "fgrep", "rg",
   "find", "date", "basename", "dirname", "realpath", "readlink", "echo",
   "printf", "nl", "fold", "rev", "tac", "paste", "join", "seq", "expand",
   "unexpand", "fmt", "column", "pwd", "which", "type",
   "uname", "hostname", "id", "whoami", "ps", "true", "false", "test",
   "sha256sum", "sha1sum", "shasum", "md5", "md5sum", "cksum",
-  "hexdump", "xxd", "od", "strings", "jq", "yq",
+  "hexdump", "od", "strings", "jq", "yq",
 ]);
-// NOTE: `env`/`printenv` are deliberately NOT allowed — `env PROG ...` execs an
-// arbitrary program (e.g. `env sh -c '…'`), which defeats the no-shell jail.
+// NOTE: deliberately excluded because a flag turns them into a writer/executor
+// with no read-only-only value here: `env`/`printenv` (`env sh -c …` execs any
+// program), `tree` (`-o FILE` writes), `xxd` (`-r` writes — use od/hexdump to
+// read). `rg`/`sort`/`git` stay but are flag-guarded below.
 /** find actions that write or execute — rejected even though find is allowed. */
 const FIND_WRITE_ACTIONS = new Set(["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf", "-fls"]);
 /** git subcommands that only read. */
@@ -114,8 +119,25 @@ export const GIT_READONLY_SUBCOMMANDS = new Set([
 // NOTE: `remote` and `reflog` are deliberately NOT read-only — `git remote add`
 // writes .git/config, `git remote update` fetches, `git reflog expire` deletes
 // history. Their read forms aren't worth a sub-subcommand guard here.
-/** Programs that write but only into the workspace (destination validated). */
-const COPY_COMMANDS = new Set(["cp", "mv"]);
+/** Programs that write but only into the workspace (destination validated).
+ * `cp` only — `mv` would delete the source (a repo write), so it is excluded. */
+const COPY_COMMANDS = new Set(["cp"]);
+/**
+ * Flags that make an otherwise read-only program write a file or exec another
+ * program; rejected for EVERY command since none have a read-only use among
+ * the allowlisted tools: `--output=FILE` (git/sort/…), `--pre`/`--hostname-bin`
+ * (rg subprocess), `--open-files-in-pager` (git grep pager exec), `--exec-path`
+ * (git external-subcommand dir), `--config-env` (git runtime config). Ambiguous
+ * short flags (`-o`, `-O`, `-r`) are handled per-program below, because their
+ * meaning differs across tools (grep -o vs sort -o; find -O<level> vs git grep -O<cmd>).
+ */
+const DANGEROUS_FLAGS = ["--output", "--pre", "--open-files-in-pager", "--exec-path", "--hostname-bin", "--config-env"];
+function dangerousFlag(argv: string[]): string | null {
+  for (const a of argv.slice(1)) {
+    for (const f of DANGEROUS_FLAGS) if (a === f || a.startsWith(`${f}=`)) return a;
+  }
+  return null;
+}
 
 /**
  * Tokenize a command line into argv WITHOUT a shell. Supports single/double
@@ -184,12 +206,18 @@ export function parseCommand(command: string): { argv: string[] } | { error: str
  */
 export function classifyCommand(argv: string[]): { kind: "readonly" } | { kind: "copy"; dest: string } | { error: string } {
   const bin = (argv[0].split("/").pop() || argv[0]);
+  // Global gate: a write/exec flag is rejected for every program.
+  const danger = dangerousFlag(argv);
+  if (danger) return { error: `'${danger}' can write a file or execute a program and is not allowed` };
   if (READONLY_COMMANDS.has(bin)) {
     if (bin === "find" && argv.some((a) => FIND_WRITE_ACTIONS.has(a))) {
       return { error: "find with -exec/-delete/-fprint (write or execute actions) is not allowed" };
     }
     if (bin === "yq" && argv.some((a) => a === "-i" || a === "--inplace")) {
       return { error: "yq -i/--inplace edits files in place and is not allowed" };
+    }
+    if (bin === "sort" && argv.some((a) => a === "-o" || a.startsWith("-o"))) {
+      return { error: "sort -o/--output writes a file and is not allowed" };
     }
     if (bin === "git") return { error: "git is handled separately" }; // (git not in READONLY set)
     return { kind: "readonly" };
@@ -206,6 +234,11 @@ export function classifyCommand(argv: string[]): { kind: "readonly" } | { kind: 
     if ((sub === "branch" || sub === "tag") && !argv.some((a) => a === "--list" || a === "-l") && argv.slice(2).some((a) => !a.startsWith("-"))) {
       return { error: `git ${sub} is only allowed in list form (--list)` };
     }
+    // git grep -O<cmd> / --open-files-in-pager opens matches in an arbitrary
+    // program (--open-files-in-pager is caught globally; -O is the short form).
+    if (sub === "grep" && argv.some((a) => a === "-O" || /^-O./.test(a))) {
+      return { error: "git grep -O/--open-files-in-pager executes a program and is not allowed" };
+    }
     return { kind: "readonly" };
   }
   if (COPY_COMMANDS.has(bin)) {
@@ -216,7 +249,7 @@ export function classifyCommand(argv: string[]): { kind: "readonly" } | { kind: 
     if (operands.length < 2) return { error: `${bin} needs a source and a destination` };
     return { kind: "copy", dest: operands[operands.length - 1] };
   }
-  return { error: `'${bin}' is not an allowed command. Allowed: read-only tools (cat, ls, grep, find, wc, stat, diff, sort, jq, …), read-only git, and cp/mv into the workspace.` };
+  return { error: `'${bin}' is not an allowed command. Allowed: read-only tools (cat, ls, grep, find, wc, stat, diff, sort, jq, …), read-only git, and cp into the workspace.` };
 }
 
 /** The RESEARCH MODE block prepended to the system prompt while jailed. */
@@ -230,7 +263,7 @@ export function buildResearchSystemPrompt(workspace: string): string {
     "- Read/inspect any file with `read`, `grep`, `find`, `ls`.",
     "- Run ONE read-only command per call with `bash-safe` (no shell: no pipes,",
     "  redirection, globs, or chaining — use `grep`/`find` directly). It also",
-    "  permits read-only `git` and `cp`/`mv` whose destination is the workspace.",
+    "  permits read-only `git` and `cp` whose destination is the workspace.",
     "- Write notes, scripts, prototypes, and snapshots ONLY inside your",
     "  isolated workspace via the `write-research` tool.",
     "",
@@ -299,7 +332,7 @@ export async function writeIntoWorkspace(
 }
 
 /**
- * True if a cp/mv destination would write inside `workspace`. The container is
+ * True if a cp destination would write inside `workspace`. The container is
  * the destination itself when it is an existing directory, else its parent
  * dir; that container's real path must be within the workspace's real path.
  */
@@ -379,12 +412,12 @@ export default function (pi: ExtensionAPI) {
     description:
       "Run ONE read-only command. There is NO shell: no pipes, redirection, " +
       "globs, command substitution, or chaining (run a single command per call). " +
-      "Allowed: read-only tools (cat, head, tail, wc, stat, file, ls, tree, du, " +
-      "sort, uniq, cut, diff, cmp, grep, rg, find, jq, xxd, strings, sha256sum, " +
+      "Allowed: read-only tools (cat, head, tail, wc, stat, file, ls, du, " +
+      "sort, uniq, cut, diff, cmp, grep, rg, find, jq, od, strings, sha256sum, " +
       "…), read-only git (log, show, diff, status, blame, ls-files, …), and " +
-      "cp/mv whose destination is inside the research workspace. Anything else " +
+      "cp whose destination is inside the research workspace. Anything else " +
       "is rejected. Use grep/find directly instead of piping.",
-    promptSnippet: "bash-safe: run ONE allowlisted read-only command (no shell, no pipes); cp/mv only into the workspace",
+    promptSnippet: "bash-safe: run ONE allowlisted read-only command (no shell, no pipes); cp only into the workspace",
     promptGuidelines: [
       "bash-safe runs a single program directly with no shell — no pipes/redirection/globs. Use `grep pattern file`, `sort -u file`, `find <dir> -name '...'` rather than chaining.",
       "To bring a repo file into the workspace, use `cp <src> <workspace>/...`; to write new content use write-research.",
@@ -412,7 +445,7 @@ export default function (pi: ExtensionAPI) {
       if (cls.kind === "copy") {
         const okDest = await destInWorkspace(cls.dest, workspace, ctx.cwd);
         if (!okDest) {
-          return { content: [{ type: "text", text: `Rejected: destination "${cls.dest}" is not inside the workspace (${workspace}). cp/mv may only write into the workspace.` }], isError: true };
+          return { content: [{ type: "text", text: `Rejected: destination "${cls.dest}" is not inside the workspace (${workspace}). cp may only write into the workspace.` }], isError: true };
         }
       }
       // Run the program directly — no shell is involved.

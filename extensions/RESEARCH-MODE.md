@@ -108,14 +108,16 @@ if you run with `--no-extensions` (discovery disabled).
   command substitution, or chaining — those are rejected with guidance to run
   a single command (use `grep`/`find` directly instead of piping). Permitted:
   - read-only programs (`cat`, `head`, `tail`, `wc`, `stat`, `file`, `ls`,
-    `tree`, `du`, `sort`, `uniq`, `cut`, `diff`, `cmp`, `grep`, `rg`, `find`
-    [without `-exec`/`-delete`/`-fprint`], `jq`, `xxd`, `strings`, `sha256sum`,
-    …);
+    `du`, `sort`, `uniq`, `cut`, `diff`, `cmp`, `grep`, `rg`, `find`
+    [without `-exec`/`-delete`/`-fprint`], `jq`, `od`, `strings`, `sha256sum`,
+    …). Flags that turn a read-only tool into a writer/executor are rejected
+    (`--output`, `sort -o`, `rg --pre`, …); `env`/`tree`/`xxd` are not allowed;
   - read-only `git` subcommands (`log`, `show`, `diff`, `status`, `blame`,
-    `ls-files`, `cat-file`, …; `config` only with `--get`/`--list`);
-  - `cp`/`mv` **only when the destination resolves inside the workspace**
+    `ls-files`, `cat-file`, …; `config` only with `--get`/`--list`; write/exec
+    flags like `--output`, `--exec-path`, and `git grep -O` rejected);
+  - `cp` **only when the destination resolves inside the workspace**
     (the destination's parent directory is realpath-checked against the
-    workspace root).
+    workspace root). `mv` is not allowed — it would delete the source.
 
   Because there is no shell and the program must be on the allowlist, this is
   **fail-safe by construction** — an unlisted program cannot run and a listed

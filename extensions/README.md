@@ -63,11 +63,14 @@ The jail is **allow-only**, not a denylist:
   - a read-only `git` subcommand (`log`, `show`, `diff`, `status`, `blame`,
     `ls-files`, `rev-parse`, … — write-capable forms like `remote`/`reflog`
     and `config` without `--get/--list` are rejected), or
-  - `cp`/`mv` whose destination resolves **inside** the workspace.
+  - `cp` whose destination resolves **inside** the workspace (`mv` is not
+    allowed — it would delete the source).
 
   Interpreters and programmable writers (`python`/`node`/`sed`/`awk`/`perl`/
-  `env`/`yq -i`/…) are deliberately not allowed, so executing code or writing
-  outside the workspace is not possible.
+  `env`/`yq -i`/`tree -o`/`xxd -r`/…) are not allowed, and write/exec *flags*
+  on otherwise-read-only tools (`--output`, `sort -o`, `rg --pre`, `git grep
+  -O`, `git --exec-path`, …) are rejected globally or per-program — so
+  executing code or writing outside the workspace is not possible.
 - **`write-research`** writes via `node:fs` with symlink-safe containment: the
   workspace is canonicalized at activation, and every write is checked to land
   inside it (rejects `..` components, absolute escapes, and symlinks that point
