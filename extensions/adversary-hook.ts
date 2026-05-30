@@ -94,8 +94,10 @@ export default function (pi: any) {
 
     if (!hasFlags) return;
 
-    // Inject as a visible message so the agent sees it
-    await ctx.inject({
+    // Inject as a visible message so the agent sees it.
+    // pi 0.74.0 replaced ctx.inject() with the ExtensionAPI's sendMessage()
+    // (same migration already applied in quorum.ts). Message shape unchanged.
+    pi.sendMessage({
       customType: "adversary-hook",
       content: `## Mechanical Check (post-write)\n\n\`\`\`\n${checkOutput.trim()}\n\`\`\`\n\nReview these flags before proceeding.`,
       display: true,
