@@ -1,5 +1,7 @@
 # /skill:manager
 
+description: Per-lineage coordinator that decomposes goals and manages workers
+
 Per-lineage coordinator. Decomposes a goal into worker-sized tasks, delegates
 to workers with TDD, verifies through adversary quorum, and maintains project
 documentation.
