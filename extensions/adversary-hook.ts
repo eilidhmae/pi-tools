@@ -25,18 +25,18 @@ import { join } from "path";
 
 const WRITE_TOOLS = new Set(["write", "edit"]);
 const ADVERSARY_CHECK_PATHS = [
-  "tools/bash/adversary-check.sh",            // project-local
-  join(process.env.HOME ?? "~", ".pi/agent/tools/adversary-check.sh"), // global
+  "scripts/bash/adversary-check.sh",            // project-local
+  join(process.env.HOME ?? "~", ".pi/agent/scripts/adversary-check.sh"), // global
 ];
 
 function findCheckScript(cwd: string): string | null {
   // Try project-local first, then global install
-  const projectLocal = join(cwd, "tools/bash/adversary-check.sh");
+  const projectLocal = join(cwd, "scripts/bash/adversary-check.sh");
   if (existsSync(projectLocal)) return projectLocal;
 
   const globalPath = join(
     process.env.HOME ?? "",
-    ".pi/agent/tools/adversary-check.sh"
+    ".pi/agent/scripts/adversary-check.sh"
   );
   if (existsSync(globalPath)) return globalPath;
 

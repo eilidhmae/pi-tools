@@ -46,7 +46,7 @@ echo "pre-push: local adversary gate SUSPENDED (broken model; see Momus model su
 exit 0
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
-SCAN_SH="$HOME/.pi/agent/tools/adversary-scan.sh"
+SCAN_SH="$HOME/.pi/agent/scripts/adversary-scan.sh"
 ZERO40="0000000000000000000000000000000000000000"
 BASE_REF="origin/main"
 

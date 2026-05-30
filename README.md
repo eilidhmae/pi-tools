@@ -41,7 +41,7 @@ pi-tools/
 │       ├── adapter-route.ts          # (role, domain) → model id
 │       ├── adversary-parse.ts        # YAML fence parser for adversary output
 │       └── adversary-capture.ts      # tier-classified training-example capture
-├── tools/bash/
+├── scripts/bash/
 │   ├── adversary-check.sh            # mechanical baseline (no LLM, exits 0)
 │   ├── adversary-pass.sh             # headless adversary pipeline
 │   └── gen-review-revise.sh          # generate → review → revise cycle
@@ -86,7 +86,7 @@ bash install.sh --local
 ```
 
 Same files, but under `.pi/agent/` in the current git repo root. Shell scripts
-go to `tools/bash/` under the repo root (not inside `.pi/agent/`).
+go to `scripts/bash/` under the repo root (not inside `.pi/agent/`).
 
 ### Force overwrite
 
@@ -138,12 +138,12 @@ What they do:
 
 - **pre-commit** (fast, mechanical) — blocks on merge-conflict markers
   and `bash -n` failures on staged `*.sh`; runs
-  `~/.pi/agent/tools/adversary-check.sh` for an informational mechanical
+  `~/.pi/agent/scripts/adversary-check.sh` for an informational mechanical
   report; warns on large additions and new TODO/FIXME lines.
   Bypass: `git commit --no-verify` (discouraged).
   Skip just the adversary-check: `PI_SKIP_ADVERSARY_CHECK=1`.
 - **post-commit** (capture-shaped, non-blocking) — runs
-  `~/.pi/agent/tools/adversary-scan.sh --range HEAD~..HEAD` in the
+  `~/.pi/agent/scripts/adversary-scan.sh --range HEAD~..HEAD` in the
   background after every commit lands, writing the review to
   `reviews/post-commit-<sha>-<ts>.log` and appending a record to
   `~/.pi/agent/training/adversary-captures/bootstrap.jsonl`. The hook
@@ -152,7 +152,7 @@ What they do:
   `[skip scan]` / `[no scan]`. Disable per-commit with
   `PI_SKIP_POST_COMMIT_SCAN=1` or `git commit --no-verify`.
 - **pre-push** (heavy, LLM, gate) — runs
-  `~/.pi/agent/tools/adversary-scan.sh --range <range> --gate` per ref.
+  `~/.pi/agent/scripts/adversary-scan.sh --range <range> --gate` per ref.
   FAIL verdict blocks the push; CONCERNS prints findings + review path
   and lets the push through. New-branch pushes anchor on `origin/main`,
   so run `git fetch origin` if the remote-tracking ref is missing.
@@ -199,13 +199,13 @@ pi /skill:manager
 pi /skill:orchestrator
 
 # Headless adversary pipeline
-bash ~/.pi/agent/tools/adversary-pass.sh src/auth.go
+bash ~/.pi/agent/scripts/adversary-pass.sh src/auth.go
 
 # Adversary pass with automatic quorum on CONCERNS/FAIL
-bash ~/.pi/agent/tools/adversary-pass.sh src/auth.go --quorum
+bash ~/.pi/agent/scripts/adversary-pass.sh src/auth.go --quorum
 
 # Full generate → adversary → revise cycle
-bash ~/.pi/agent/tools/gen-review-revise.sh specs/feature.md --revise
+bash ~/.pi/agent/scripts/gen-review-revise.sh specs/feature.md --revise
 ```
 
 ## Key design notes

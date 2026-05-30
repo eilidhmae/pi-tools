@@ -21,7 +21,7 @@ catch your own mistakes before someone else does.
 Run the Mechanical Baseline:
 
 ```bash
-bash tools/bash/adversary-check.sh . || bash ~/.pi/agent/tools/adversary-check.sh .
+bash scripts/bash/adversary-check.sh . || bash ~/.pi/agent/scripts/adversary-check.sh .
 ```
 
 Fall back to:

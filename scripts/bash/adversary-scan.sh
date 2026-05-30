@@ -62,11 +62,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PASS_SH="$SCRIPT_DIR/adversary-pass.sh"
 if [[ ! -x "$PASS_SH" ]]; then
   # Fall back to global install if not next to scan.sh.
-  PASS_SH="$HOME/.pi/agent/tools/adversary-pass.sh"
+  PASS_SH="$HOME/.pi/agent/scripts/adversary-pass.sh"
 fi
 if [[ ! -x "$PASS_SH" ]]; then
   echo "ERROR: adversary-pass.sh not found alongside scan.sh or under" >&2
-  echo "       ~/.pi/agent/tools/. Run install.sh first." >&2
+  echo "       ~/.pi/agent/scripts/. Run install.sh first." >&2
   exit 1
 fi
 

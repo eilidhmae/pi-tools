@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# drift-check.sh -- Thin wrapper that runs tools/ts/drift-check.ts.
+# drift-check.sh -- Thin wrapper that runs scripts/ts/drift-check.ts.
 #
 # Same resolver pattern as capture-review.sh: tsx (preferred), then
 # npx --no-install tsx, then ts-node, then a network npx -y tsx.
@@ -22,7 +22,7 @@ TS_FILE=""
 for candidate in \
   "$SCRIPT_DIR/ts/drift-check.ts" \
   "$SCRIPT_DIR/../ts/drift-check.ts" \
-  "$HOME/.pi/agent/tools/ts/drift-check.ts"; do
+  "$HOME/.pi/agent/scripts/ts/drift-check.ts"; do
   if [[ -f "$candidate" ]]; then
     TS_FILE="$candidate"
     break
@@ -30,7 +30,7 @@ for candidate in \
 done
 if [[ -z "$TS_FILE" ]]; then
   echo "ERROR: drift-check.ts not found (looked in:" >&2
-  echo "  $SCRIPT_DIR/ts/, $SCRIPT_DIR/../ts/, ~/.pi/agent/tools/ts/)" >&2
+  echo "  $SCRIPT_DIR/ts/, $SCRIPT_DIR/../ts/, ~/.pi/agent/scripts/ts/)" >&2
   exit 1
 fi
 

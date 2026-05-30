@@ -362,7 +362,7 @@ echo "Review written to: $REVIEW_FILE"
 # that still uses "no issues" boilerplate when the YAML lists findings
 # of the matching category. Appends a "Pipeline Drift Warning" block
 # to the review file on disagreement. Does NOT change the verdict or
-# YAML — see tools/ts/drift-check.ts.
+# YAML — see scripts/ts/drift-check.ts.
 #
 # Runs BEFORE Stage 1b (capture) so any appended warning is part of the
 # review body the capture pipeline serialises.
@@ -370,7 +370,7 @@ echo "Review written to: $REVIEW_FILE"
 # ADV_NO_DRIFT_CHECK: when set (non-empty), skip the check.
 DRIFT_SH=""
 for c in "$(dirname "${BASH_SOURCE[0]}")/drift-check.sh" \
-         "$HOME/.pi/agent/tools/drift-check.sh"; do
+         "$HOME/.pi/agent/scripts/drift-check.sh"; do
   if [[ -x "$c" ]]; then DRIFT_SH="$c"; break; fi
 done
 if [[ -n "${ADV_NO_DRIFT_CHECK:-}" ]]; then
@@ -392,7 +392,7 @@ fi
 # reviews are low quality and would dilute the training signal.
 CAPTURE_SH=""
 for c in "$(dirname "${BASH_SOURCE[0]}")/capture-review.sh" \
-         "$HOME/.pi/agent/tools/capture-review.sh"; do
+         "$HOME/.pi/agent/scripts/capture-review.sh"; do
   if [[ -x "$c" ]]; then CAPTURE_SH="$c"; break; fi
 done
 if [[ -n "${ADV_NO_CAPTURE:-}" ]]; then

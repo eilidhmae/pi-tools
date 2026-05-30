@@ -13,7 +13,7 @@
 #   - only the research-mode extension is loaded (-e), so quorum/adversary-hook
 #     do not fire and inflate the turn
 #
-# The mechanical baseline (tools/bash/adversary-check.sh) is a SCRIPT, which the
+# The mechanical baseline (scripts/bash/adversary-check.sh) is a SCRIPT, which the
 # allow-only jail cannot run, so this wrapper runs it and inlines the result —
 # matching the skill's Step 0 contract.
 #
@@ -72,10 +72,10 @@ mkdir -p "$REVIEW_DIR"
 
 # --- Step 0 baseline: run the script here; the jailed model cannot ---
 BASELINE="(mechanical baseline unavailable)"
-if [[ -x tools/bash/adversary-check.sh ]] || [[ -f tools/bash/adversary-check.sh ]]; then
-  BASELINE=$(bash tools/bash/adversary-check.sh . 2>&1 || true)
-elif [[ -f "${HOME}/.pi/agent/tools/adversary-check.sh" ]]; then
-  BASELINE=$(bash "${HOME}/.pi/agent/tools/adversary-check.sh" . 2>&1 || true)
+if [[ -x scripts/bash/adversary-check.sh ]] || [[ -f scripts/bash/adversary-check.sh ]]; then
+  BASELINE=$(bash scripts/bash/adversary-check.sh . 2>&1 || true)
+elif [[ -f "${HOME}/.pi/agent/scripts/adversary-check.sh" ]]; then
+  BASELINE=$(bash "${HOME}/.pi/agent/scripts/adversary-check.sh" . 2>&1 || true)
 fi
 
 read -r -d '' PROMPT <<EOF || true

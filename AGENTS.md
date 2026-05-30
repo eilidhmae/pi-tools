@@ -39,7 +39,7 @@ Run when assessing project state — on startup, before commits, and during
 adversary reviews:
 
 ```bash
-bash tools/bash/adversary-check.sh . || bash ~/.pi/agent/tools/adversary-check.sh .
+bash scripts/bash/adversary-check.sh . || bash ~/.pi/agent/scripts/adversary-check.sh .
 ```
 
 The script **always exits 0**. Findings are in stdout — do not gate on exit
@@ -188,7 +188,7 @@ This copies your changes to `~/.pi/agent/` for immediate testing.
 **File locations:**
 - Extensions: `extensions/*.ts` → `~/.pi/agent/extensions/`
 - Skills: `skills/<name>/SKILL.md` → `~/.pi/agent/skills/<name>/SKILL.md`
-- Tools: `tools/bash/*.sh` → `~/.pi/agent/tools/`
+- Tools: `scripts/bash/*.sh` → `~/.pi/agent/scripts/`
 - Documentation: `extensions/*.md` → `~/.pi/agent/extensions/`
 
 **Example:** Adding a new extension:
