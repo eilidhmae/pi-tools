@@ -10,11 +10,14 @@ Activates research mode automatically on session start. Best for dedicated resea
 
 **Usage:**
 ```bash
-pi -e extensions/research-mode.ts -p "Analyze this codebase"
+# Restrict built-in tools to read-only, then add research extension
+pi --tools read,grep,find,ls -e extensions/research-mode.ts -p "Analyze this codebase"
 
 # Or combine with the research skill for grounded analysis:
-pi -e extensions/research-mode.ts /skill:research "How does authentication work?"
+pi --tools read,grep,find,ls -e extensions/research-mode.ts /skill:research "How does authentication work?"
 ```
+
+**Important:** The `--tools read,grep,find,ls` flag restricts built-in tools to read-only operations. The extension then adds `write-research` and `bash-safe` as safe alternatives.
 
 **Features:**
 - Auto-creates temp directory on session start
@@ -29,8 +32,8 @@ Activates research mode mid-session via `/research-mode` command. Best for dropp
 
 **Usage:**
 ```bash
-# Start any pi session with the extension
-pi -e extensions/research-mode-command.ts
+# Start with tool restrictions, then activate research mode on-demand
+pi --tools read,grep,find,ls -e extensions/research-mode-command.ts
 
 # Then in the session, type:
 /research-mode              # Activate research mode
@@ -44,6 +47,8 @@ pi -e extensions/research-mode-command.ts
 # Combine with research skill:
 /skill:research "Trace the data flow through the API layer"
 ```
+
+**Important:** The `--tools read,grep,find,ls` flag restricts built-in tools. The `/research-mode` command then adds `write-research` and `bash-safe` as safe alternatives.
 
 **Features:**
 - On-demand activation via slash command
