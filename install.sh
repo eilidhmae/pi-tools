@@ -130,6 +130,15 @@ install_file \
   "$SCRIPT_DIR/extensions/quorum.ts" \
   "$PI_AGENT_DIR/extensions/quorum.ts"
 
+# Research mode extensions (optional, for secure read-only scanning)
+install_file \
+  "$SCRIPT_DIR/extensions/research-mode.ts" \
+  "$PI_AGENT_DIR/extensions/research-mode.ts"
+
+install_file \
+  "$SCRIPT_DIR/extensions/research-mode-command.ts" \
+  "$PI_AGENT_DIR/extensions/research-mode-command.ts"
+
 # Library modules imported by the real extensions: live under
 # extensions/lib/ so pi's flat-glob extension discovery does NOT try to
 # load them as plugins (which would error with "no valid factory
@@ -443,6 +452,16 @@ echo ""
 echo " Extensions active in all pi sessions:"
 echo "   adversary-hook.ts  (mechanical check after every write/edit)"
 echo "   quorum.ts          (auto-quorum on CONCERNS/FAIL verdicts)"
+echo ""
+echo " Optional research extensions (use with -e flag):"
+echo "   research-mode.ts           (auto-activate on session start)"
+echo "     pi -e ~/.pi/agent/extensions/research-mode.ts -p 'Analyze this'"
+echo ""
+echo "   research-mode-command.ts   (on-demand via /research-mode)"
+echo "     pi -e ~/.pi/agent/extensions/research-mode-command.ts"
+echo "     Then type: /research-mode  (to activate mid-session)"
+echo ""
+echo " See extensions/README.md for full documentation."
 echo ""
 echo " qwen3-coder note:"
 echo "   Non-thinking mode only — no <think> blocks."
