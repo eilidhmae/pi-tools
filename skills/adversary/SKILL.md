@@ -38,7 +38,7 @@ only into your scratch workspace). Launch:
 pi --tools read,grep,find,ls,bash-safe,write-research --research   # then /skill:adversary
 ```
 
-or `tools/bash/adversary-jailed.sh <target>`. If you find yourself wanting to
+or `scripts/bash/adversary-jailed.sh <target>`. If you find yourself wanting to
 fix something, report it instead — you cannot write, and that is by design.
 
 ## Review Scope
@@ -71,7 +71,7 @@ you can do:
 
 ### Step 0: Mechanical Baseline
 
-The mechanical baseline (`tools/bash/adversary-check.sh`) is a script, so the
+The mechanical baseline (`scripts/bash/adversary-check.sh`) is a script, so the
 jail cannot run it — **the dispatcher/wrapper runs it and provides the output
 to you** (`adversary-jailed.sh` inlines it into your prompt). Read that output
 and note red flags for later steps. If it was not provided, reconstruct what
@@ -267,7 +267,7 @@ Both must be present.
 When a finding of the given YAML `category` exists, the matching prose
 section MUST reference it (by id and one-line summary) instead of the
 "no issues" boilerplate. This mapping is mirrored by
-`tools/ts/drift-check.ts`, which runs post-generation and appends a
+`scripts/ts/drift-check.ts`, which runs post-generation and appends a
 `## Pipeline Drift Warning` block to the review file if any expected
 section is still boilerplate — keep the two in lockstep.
 

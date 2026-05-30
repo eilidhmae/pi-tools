@@ -15,8 +15,8 @@
 #
 # Components installed (source path → install path under $PI_AGENT_DIR,
 # which is ~/.pi/agent/ in global mode and <repo>/.pi/agent/ in --local
-# mode; shell scripts go to $PI_AGENT_DIR/tools/ in global mode and
-# <repo>/tools/bash/ in --local mode):
+# mode; shell scripts go to $PI_AGENT_DIR/scripts/ in global mode and
+# <repo>/scripts/bash/ in --local mode):
 #
 #   AGENTS.md                                  → AGENTS.md
 #   skills/<name>/SKILL.md                     → skills/<name>/SKILL.md  (/skill:<name>)
@@ -24,14 +24,14 @@
 #   extensions/adversary-hook.ts               → extensions/adversary-hook.ts  (PostWrite check)
 #   extensions/quorum.ts                       → extensions/quorum.ts  (adversary quorum)
 #   extensions/lib/*.ts                        → extensions/lib/*.ts  (helper modules)
-#   tools/bash/adversary-check.sh              → tools/adversary-check.sh
-#   tools/bash/adversary-pass.sh               → tools/adversary-pass.sh
-#   tools/bash/adversary-jailed.sh             → tools/adversary-jailed.sh
-#   tools/bash/adversary-scan.sh               → tools/adversary-scan.sh
-#   tools/bash/adversary-loop.sh               → tools/adversary-loop.sh
-#   tools/bash/capture-review.sh               → tools/capture-review.sh
-#   tools/bash/gen-review-revise.sh            → tools/gen-review-revise.sh
-#   tools/ts/capture-review.ts                 → tools/ts/capture-review.ts
+#   scripts/bash/adversary-check.sh              → scripts/adversary-check.sh
+#   scripts/bash/adversary-pass.sh               → scripts/adversary-pass.sh
+#   scripts/bash/adversary-jailed.sh             → scripts/adversary-jailed.sh
+#   scripts/bash/adversary-scan.sh               → scripts/adversary-scan.sh
+#   scripts/bash/adversary-loop.sh               → scripts/adversary-loop.sh
+#   scripts/bash/capture-review.sh               → scripts/capture-review.sh
+#   scripts/bash/gen-review-revise.sh            → scripts/gen-review-revise.sh
+#   scripts/ts/capture-review.ts                 → scripts/ts/capture-review.ts
 #
 # Also chmod+x the in-repo server launcher (not installed elsewhere —
 # invoke it directly from the pi-tools checkout):
@@ -69,11 +69,11 @@ if [[ "$TARGET_MODE" == "local" ]]; then
     exit 1
   fi
   PI_AGENT_DIR="$(git rev-parse --show-toplevel)/.pi/agent"
-  TOOLS_DIR="$(git rev-parse --show-toplevel)/tools/bash"
+  SCRIPTS_DIR="$(git rev-parse --show-toplevel)/scripts/bash"
   echo "Installing project-local to: $PI_AGENT_DIR"
 else
   PI_AGENT_DIR="${HOME}/.pi/agent"
-  TOOLS_DIR="${HOME}/.pi/agent/tools"
+  SCRIPTS_DIR="${HOME}/.pi/agent/scripts"
   echo "Installing globally to: $PI_AGENT_DIR"
 fi
 
@@ -172,48 +172,48 @@ for stale in adapter-route.ts adversary-parse.ts adversary-capture.ts; do
 done
 
 echo ""
-echo "=== Tools ==="
+echo "=== Scripts ==="
 install_file \
-  "$SCRIPT_DIR/tools/bash/adversary-check.sh" \
-  "${TOOLS_DIR}/adversary-check.sh"
-chmod +x "${TOOLS_DIR}/adversary-check.sh"
+  "$SCRIPT_DIR/scripts/bash/adversary-check.sh" \
+  "${SCRIPTS_DIR}/adversary-check.sh"
+chmod +x "${SCRIPTS_DIR}/adversary-check.sh"
 
 install_file \
-  "$SCRIPT_DIR/tools/bash/adversary-pass.sh" \
-  "${TOOLS_DIR}/adversary-pass.sh"
-chmod +x "${TOOLS_DIR}/adversary-pass.sh"
+  "$SCRIPT_DIR/scripts/bash/adversary-pass.sh" \
+  "${SCRIPTS_DIR}/adversary-pass.sh"
+chmod +x "${SCRIPTS_DIR}/adversary-pass.sh"
 
 # Tool-enabled adversary inside the research-mode jail (read-only + bash-safe).
 install_file \
-  "$SCRIPT_DIR/tools/bash/adversary-jailed.sh" \
-  "${TOOLS_DIR}/adversary-jailed.sh"
-chmod +x "${TOOLS_DIR}/adversary-jailed.sh"
+  "$SCRIPT_DIR/scripts/bash/adversary-jailed.sh" \
+  "${SCRIPTS_DIR}/adversary-jailed.sh"
+chmod +x "${SCRIPTS_DIR}/adversary-jailed.sh"
 
 install_file \
-  "$SCRIPT_DIR/tools/bash/adversary-scan.sh" \
-  "${TOOLS_DIR}/adversary-scan.sh"
-chmod +x "${TOOLS_DIR}/adversary-scan.sh"
+  "$SCRIPT_DIR/scripts/bash/adversary-scan.sh" \
+  "${SCRIPTS_DIR}/adversary-scan.sh"
+chmod +x "${SCRIPTS_DIR}/adversary-scan.sh"
 
 install_file \
-  "$SCRIPT_DIR/tools/bash/adversary-loop.sh" \
-  "${TOOLS_DIR}/adversary-loop.sh"
-chmod +x "${TOOLS_DIR}/adversary-loop.sh"
+  "$SCRIPT_DIR/scripts/bash/adversary-loop.sh" \
+  "${SCRIPTS_DIR}/adversary-loop.sh"
+chmod +x "${SCRIPTS_DIR}/adversary-loop.sh"
 
 install_file \
-  "$SCRIPT_DIR/tools/bash/capture-review.sh" \
-  "${TOOLS_DIR}/capture-review.sh"
-chmod +x "${TOOLS_DIR}/capture-review.sh"
+  "$SCRIPT_DIR/scripts/bash/capture-review.sh" \
+  "${SCRIPTS_DIR}/capture-review.sh"
+chmod +x "${SCRIPTS_DIR}/capture-review.sh"
 
 # capture-review.sh delegates to a tsx-runnable TS file. Install it at
-# $TOOLS_DIR/ts/ so the wrapper's first-candidate path resolves.
+# $SCRIPTS_DIR/ts/ so the wrapper's first-candidate path resolves.
 install_file \
-  "$SCRIPT_DIR/tools/ts/capture-review.ts" \
-  "${TOOLS_DIR}/ts/capture-review.ts"
+  "$SCRIPT_DIR/scripts/ts/capture-review.ts" \
+  "${SCRIPTS_DIR}/ts/capture-review.ts"
 
 install_file \
-  "$SCRIPT_DIR/tools/bash/gen-review-revise.sh" \
-  "${TOOLS_DIR}/gen-review-revise.sh"
-chmod +x "${TOOLS_DIR}/gen-review-revise.sh"
+  "$SCRIPT_DIR/scripts/bash/gen-review-revise.sh" \
+  "${SCRIPTS_DIR}/gen-review-revise.sh"
+chmod +x "${SCRIPTS_DIR}/gen-review-revise.sh"
 
 # --- Make in-repo server launchers executable (no copy; invoke from repo) ---
 # mlx-server.sh and the mlx-lm-multi/mola launchers reference each other
@@ -454,11 +454,11 @@ echo "   /skill:orchestrator        # orchestrator session"
 echo "   /skill:worker              # worker implementation session"
 echo "   /skill:research            # research and analysis (use with research-mode extension)"
 echo ""
-echo "   ${TOOLS_DIR}/adversary-pass.sh <file>          # headless adversary pipeline"
-echo "   ${TOOLS_DIR}/adversary-pass.sh <file> --quorum # with manual quorum"
-echo "   ${TOOLS_DIR}/gen-review-revise.sh <spec.md>    # full generate→review→revise"
+echo "   ${SCRIPTS_DIR}/adversary-pass.sh <file>          # headless adversary pipeline"
+echo "   ${SCRIPTS_DIR}/adversary-pass.sh <file> --quorum # with manual quorum"
+echo "   ${SCRIPTS_DIR}/gen-review-revise.sh <spec.md>    # full generate→review→revise"
 echo ""
-echo "   (Add ${TOOLS_DIR} to PATH in your shell rc to invoke by bare name.)"
+echo "   (Add ${SCRIPTS_DIR} to PATH in your shell rc to invoke by bare name.)"
 echo ""
 echo " Server stack control (run from the pi-tools checkout):"
 echo "   bash $SCRIPT_DIR/server/mlx-server.sh up      # Qwen + extras"

@@ -31,7 +31,7 @@ set -uo pipefail
 # ---------------------------------------------------------------------------
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
-ADVERSARY_CHECK="$HOME/.pi/agent/tools/adversary-check.sh"
+ADVERSARY_CHECK="$HOME/.pi/agent/scripts/adversary-check.sh"
 
 FAIL_COUNT=0
 WARN_COUNT=0
@@ -127,7 +127,7 @@ if [ "${PI_SKIP_ADVERSARY_CHECK:-0}" = "1" ]; then
     echo "  (skipped: PI_SKIP_ADVERSARY_CHECK=1)"
 elif [ ! -x "$ADVERSARY_CHECK" ]; then
     warn "adversary-check.sh not found at $ADVERSARY_CHECK -- skipping"
-    echo "         Install pi-tools (run install.sh) to populate ~/.pi/agent/tools/."
+    echo "         Install pi-tools (run install.sh) to populate ~/.pi/agent/scripts/."
 else
     "$ADVERSARY_CHECK" "$REPO_ROOT" 2>&1 | sed 's/^/  /'
 fi

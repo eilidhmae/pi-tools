@@ -85,7 +85,7 @@ pi-tools/
 │       ├── adapter-route.ts             #   (role,domain) → model id
 │       ├── adversary-parse.ts           #   YAML fence parser w/ Zod schema
 │       └── adversary-capture.ts         #   emits training examples on consensus
-├── tools/bash/
+├── scripts/bash/
 │   ├── adversary-check.sh               # unchanged
 │   ├── adversary-pass.sh                # +--adapter / --domain flags
 │   └── gen-review-revise.sh             # +adapter passthrough
@@ -249,7 +249,7 @@ reviews). Disagreements stashed separately. Tiered by (model heterogeneity
 - Vary temperature across peers (`0.2, 0.5, 0.7` defaults).
 - After verdict aggregation, call `adversary-capture.ts`.
 
-### `tools/bash/adversary-pass.sh`, `gen-review-revise.sh` (modified)
+### `scripts/bash/adversary-pass.sh`, `gen-review-revise.sh` (modified)
 
 Add `--adapter` / `--domain` flags. Default behavior unchanged when not
 passed. Forward to spawned `pi` via `--model qwen3-coder-30b-a3b+<suffix>`.
@@ -348,7 +348,7 @@ Only `worker-go` and `adversary-general` get datasets/configs/training plumbing.
 - `model-plan.md` — mirror of this plan, in-repo for collaborators
 - `extensions/lib/{adapter-route,adversary-parse,adversary-capture}.ts`
 - `extensions/quorum.ts` (modified)
-- `tools/bash/adversary-pass.sh`, `gen-review-revise.sh` (modified)
+- `scripts/bash/adversary-pass.sh`, `gen-review-revise.sh` (modified)
 - `skills/{orchestrator,manager,adversary}/SKILL.md` (modified)
 - `prompts/adversary-review.md` (modified)
 - `server/` (entire subtree above)

@@ -70,14 +70,14 @@ done
 # Resolve the adversary-pass.sh driver (sibling install or global).
 PASS_SH=""
 for c in "$(dirname "${BASH_SOURCE[0]}")/adversary-pass.sh" \
-         "$HOME/.pi/agent/tools/adversary-pass.sh"; do
+         "$HOME/.pi/agent/scripts/adversary-pass.sh"; do
   if [[ -x "$c" ]]; then PASS_SH="$c"; break; fi
 done
 [[ -n "$PASS_SH" ]] || { echo "ERROR: adversary-pass.sh not found." >&2; exit 1; }
 
 CAPTURE_SH=""
 for c in "$(dirname "${BASH_SOURCE[0]}")/capture-review.sh" \
-         "$HOME/.pi/agent/tools/capture-review.sh"; do
+         "$HOME/.pi/agent/scripts/capture-review.sh"; do
   if [[ -x "$c" ]]; then CAPTURE_SH="$c"; break; fi
 done
 
