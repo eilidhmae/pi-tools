@@ -63,9 +63,10 @@ export default async function (pi: ExtensionAPI) {
     }
   });
 
-  // Disable dangerous built-in tools
-  pi.unregisterTool("write");
-  pi.unregisterTool("edit");
+  // Note: We cannot unregister built-in tools via the extension API.
+  // Users should invoke with: pi --tools read,grep,find,ls -e extensions/research-mode.ts
+  // This restricts available tools to read-only operations plus our custom tools.
+  // The write-research and bash-safe tools below provide safe alternatives.
 
   // Register write-research tool - only writes to temp dir
   pi.registerTool({
