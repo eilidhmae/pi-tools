@@ -165,3 +165,50 @@ verdicts and spawns peer adversary sessions as pi RPC subprocesses. The
 **qwen3-coder note:** this model does not generate `<think>` blocks. The
 step-by-step structure in skill prompts acts as the reasoning scaffold. Do not
 attempt to enable thinking mode — it is not supported.
+
+## Development Workflow
+
+**Source of truth:** All development happens in this repository (`~/src/pi-tools`).
+
+**Editing files:** Only edit files in this repository. Do NOT edit files in
+`~/.pi/agent/` directly — those are managed by the install script.
+
+**Testing changes:** After editing files, run:
+```bash
+./install.sh --force
+```
+This copies your changes to `~/.pi/agent/` for immediate testing.
+
+**Keeping install.sh up-to-date:** When adding new files that should be installed:
+1. Add the file to the appropriate section in `install.sh` (extensions, skills, tools, etc.)
+2. Use the `install_file` helper function
+3. Update the help text at the end of `install.sh` to document the new file
+4. Test with `./install.sh --force` to verify it installs correctly
+
+**File locations:**
+- Extensions: `extensions/*.ts` → `~/.pi/agent/extensions/`
+- Skills: `skills/<name>/SKILL.md` → `~/.pi/agent/skills/<name>/SKILL.md`
+- Tools: `tools/bash/*.sh` → `~/.pi/agent/tools/`
+- Documentation: `extensions/*.md` → `~/.pi/agent/extensions/`
+
+**Example:** Adding a new extension:
+```bash
+# 1. Create the extension file
+# extensions/my-new-extension.ts
+
+# 2. Add to install.sh in the "=== Extensions ===" section:
+# install_file \
+#   "$SCRIPT_DIR/extensions/my-new-extension.ts" \
+#   "$PI_AGENT_DIR/extensions/my-new-extension.ts"
+
+# 3. Update the help text at the end of install.sh
+
+# 4. Test
+./install.sh --force
+```
+
+**Rollback:** If needed, revert changes in this repo and re-run install:
+```bash
+git checkout <file>
+./install.sh --force
+```
