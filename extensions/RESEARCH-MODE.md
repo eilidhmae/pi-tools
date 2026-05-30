@@ -108,10 +108,11 @@ if you run with `--no-extensions` (discovery disabled).
   command substitution, or chaining — those are rejected with guidance to run
   a single command (use `grep`/`find` directly instead of piping). Permitted:
   - read-only programs (`cat`, `head`, `tail`, `wc`, `stat`, `file`, `ls`,
-    `du`, `sort`, `uniq`, `cut`, `diff`, `cmp`, `grep`, `rg`, `find`
+    `du`, `uniq`, `cut`, `diff`, `cmp`, `grep`, `rg`, `find`
     [without `-exec`/`-delete`/`-fprint`], `jq`, `od`, `strings`, `sha256sum`,
     …). Flags that turn a read-only tool into a writer/executor are rejected
-    (`--output`, `sort -o`, `rg --pre`, …); `env`/`tree`/`xxd` are not allowed;
+    (`--output`, `rg --pre`, `git grep -O`, …); `env`/`tree`/`xxd`/`sort` are
+    not allowed (each has a write/exec flag reachable via abbreviation);
   - read-only `git` subcommands (`log`, `show`, `diff`, `status`, `blame`,
     `ls-files`, `cat-file`, …; `config` only with `--get`/`--list`; write/exec
     flags like `--output`, `--exec-path`, and `git grep -O` rejected);

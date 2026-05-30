@@ -97,7 +97,7 @@ for (const c of [
   "find . -fprint0 /tmp/x",                  // find write action not previously listed
   // round-2 hardening (adversarial review round 2): write/exec via flags + mv
   "rg --pre=/bin/sh . install.sh", "rg --pre /bin/sh .",          // rg subprocess exec
-  "sort -o /tmp/x f", "sort -o/tmp/x f",                           // sort write-to-file
+  "sort -o /tmp/x f", "sort --out=/tmp/x f", "sort -u f",          // sort dropped: --output/-T write, --compress-program execs, and GNU --out abbreviation defeats per-flag guards
   "git grep -O/bin/sh foo", "git grep --open-files-in-pager=touch foo", // git grep pager exec
   "git show --output=/tmp/x HEAD", "git diff --output /tmp/x", "git log --output=/tmp/x", // git --output write
   "git --exec-path=/tmp log",                // git external-subcommand dir (RCE on Linux)
@@ -114,7 +114,6 @@ for (const c of [
   ok("error" in cls("cp onlyone"), "classify: cp needs src+dest");
   // guards must not over-block legitimate read-only flag uses:
   ok("kind" in cls("grep -o foo file"), "classify: grep -o (only-matching) still readonly");
-  ok("kind" in cls("sort -u file"), "classify: sort -u still readonly");
   ok("kind" in cls("git diff HEAD~1 -- src/x.go"), "classify: git diff with pathspec still readonly");
 }
 
