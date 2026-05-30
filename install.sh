@@ -131,6 +131,12 @@ install_file \
   "$SCRIPT_DIR/extensions/quorum.ts" \
   "$PI_AGENT_DIR/extensions/quorum.ts"
 
+# Default role: light coordinator persona + situational tool guidance for bare
+# `pi` (defers to research mode / restricted sessions). Opt out: --no-default-role.
+install_file \
+  "$SCRIPT_DIR/extensions/default-role.ts" \
+  "$PI_AGENT_DIR/extensions/default-role.ts"
+
 # Research mode extension (read-only jail with isolated write workspace).
 # Single self-contained extension: provides write-research + bash-safe tools,
 # the /research-mode command, system-prompt injection, and tool enforcement.

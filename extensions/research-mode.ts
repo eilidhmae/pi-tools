@@ -506,6 +506,9 @@ export default function (pi: ExtensionAPI) {
     try { workspace = await realpath(dir); } catch { workspace = dir; }
     savedActiveTools = pi.getActiveTools();
     researchActive = true;
+    // Same-process signal other extensions (e.g. default-role) can read to tell
+    // "research is active" apart from "tools merely restricted".
+    process.env.PI_RESEARCH_MODE_ACTIVE = "1";
     applyToolRestriction();
     renderWidget(ctx);
     warnProtection(ctx);
@@ -514,6 +517,7 @@ export default function (pi: ExtensionAPI) {
 
   function deactivate(ctx: any) {
     researchActive = false;
+    delete process.env.PI_RESEARCH_MODE_ACTIVE;
     if (savedActiveTools) {
       try { pi.setActiveTools(savedActiveTools); } catch { /* tool set may be fixed by --tools */ }
     }
