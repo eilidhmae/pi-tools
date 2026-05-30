@@ -95,15 +95,27 @@ for (const c of [
   "git reflog expire --all",                 // reflog expire deletes history
   "yq -i .x=1 f.yaml", "yq --inplace .x f",  // yq in-place file write
   "find . -fprint0 /tmp/x",                  // find write action not previously listed
+  // round-2 hardening (adversarial review round 2): write/exec via flags + mv
+  "rg --pre=/bin/sh . install.sh", "rg --pre /bin/sh .",          // rg subprocess exec
+  "sort -o /tmp/x f", "sort -o/tmp/x f",                           // sort write-to-file
+  "git grep -O/bin/sh foo", "git grep --open-files-in-pager=touch foo", // git grep pager exec
+  "git show --output=/tmp/x HEAD", "git diff --output /tmp/x", "git log --output=/tmp/x", // git --output write
+  "git --exec-path=/tmp log",                // git external-subcommand dir (RCE on Linux)
+  "tree -o /tmp/x .", "xxd -r -p in out",    // tree/xxd dropped (each has a write flag)
+  "mv repo/file /tmp/x",                     // mv deletes the source (a repo write)
 ]) {
   ok("error" in cls(c), `classify REJECT: ${c}`);
 }
 {
   const c = cls("cp src/x.go /tmp/ws/x.go");
   ok("kind" in c && (c as any).kind === "copy" && (c as any).dest === "/tmp/ws/x.go", "classify: cp -> copy with dest");
-  ok("kind" in cls("mv a b") && (cls("mv a b") as any).kind === "copy", "classify: mv -> copy");
+  ok("error" in cls("mv a b"), "classify: mv rejected (would delete source)");
   ok("error" in cls("cp -t dir a"), "classify: cp -t rejected");
   ok("error" in cls("cp onlyone"), "classify: cp needs src+dest");
+  // guards must not over-block legitimate read-only flag uses:
+  ok("kind" in cls("grep -o foo file"), "classify: grep -o (only-matching) still readonly");
+  ok("kind" in cls("sort -u file"), "classify: sort -u still readonly");
+  ok("kind" in cls("git diff HEAD~1 -- src/x.go"), "classify: git diff with pathspec still readonly");
 }
 
 // --- destInWorkspace --------------------------------------------------------
