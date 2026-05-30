@@ -1,5 +1,7 @@
 # /skill:orchestrator
 
+description: Top-level coordinator that reconciles lineages and owns commits
+
 Top-level coordinator. Reconciles lineage-scoped drafts produced by parallel
 managers into canonical `PROJECT.md` / `CHANGELOG.md` / `TODO.md`, owns the
 commit process, and dispatches manager subagents with `LINEAGE_ID`s.
