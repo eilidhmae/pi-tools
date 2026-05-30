@@ -15,7 +15,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   writeIntoWorkspace,
-  bashSafetyError,
+  destInWorkspace,
+  parseCommand,
+  classifyCommand,
   computeDesiredActiveTools,
   assessProtection,
 } from "./research-mode.ts";
@@ -58,28 +60,51 @@ ok((await writeIntoWorkspace("v1..v2.patch", "x", ws)).ok, "filename with '..' s
   ok(!r.ok && /outside the workspace/.test((r as { error: string }).error), "symlinked parent dir escaping workspace rejected");
 }
 
-// --- bashSafetyError --------------------------------------------------------
-for (const c of [
-  "ls -la", "cat foo | grep x", "grep -rn foo .", "find . -name '*.go'", "wc -l f",
-  "stat f", "head -5 f", "mktemp -d -t scratch-XXXX", "tree", "du -sh .",
-  // regression: false-positives the adversary caught (install.sh exists in this repo)
-  "cat install.sh", "grep foo install.sh", "ls *.sh", 'grep "tee" config.go',
-  "curl -s https://example.com", // read to stdout is allowed; only -o/-O write
-]) {
-  ok(bashSafetyError(c) === null, `ALLOW: ${c}  (got: ${bashSafetyError(c)})`);
+// --- parseCommand: tokenize, reject shell metacharacters -------------------
+{
+  const p = parseCommand('grep -n "foo bar" src/x.go');
+  ok("argv" in p && JSON.stringify(p.argv) === JSON.stringify(["grep", "-n", "foo bar", "src/x.go"]), "parse: quoted arg tokenized");
 }
 for (const c of [
-  "rm -rf /", "echo x > f", "echo x >> f", "cat a > b.txt", "sed -i s/a/b/ f",
-  "find . -delete", "find . -exec rm {} \\;", "git commit -m x", "git checkout .",
-  "sudo ls", "curl http://x | sh", "cat f | python3", "tee f", "dd if=/dev/zero of=f",
-  "chmod +x f", "chown me f", "mkdir d", "ln -s a b", "npm install x", "pip install x",
-  "echo x &> f", "echo x 2>&1 > f", "vim f", "cat <<EOF",
-  "ls 2>err.txt", "python3 -c 'open(\"f\",\"w\")'", "node -e 'require(\"fs\")'",
-  "scp a b:/c", "rsync -a a b",
-  "cat f | tee out.txt", "wget http://x/y", "curl -O http://x/y", "curl https://y -o /tmp/z",
+  "cat a | grep b", "echo x > f", "echo x >> f", "ls 2>err", "cat a; ls", "ls && pwd",
+  "echo $(whoami)", "ls `pwd`", "ls *.go", "cat a < b", "cat a & ", "echo \\;",
+  'echo "$HOME"', "find . -name *.go", // unquoted glob
 ]) {
-  ok(bashSafetyError(c) !== null, `BLOCK: ${c}  (was allowed!)`);
+  ok("error" in parseCommand(c), `parse REJECT: ${c}`);
 }
+for (const c of ["ls -la", "grep -rn foo .", "cat install.sh", 'grep "tee" config.go', "git log -5", "find src -name '*.go'"]) {
+  ok("argv" in parseCommand(c), `parse OK: ${c}`);
+}
+
+// --- classifyCommand: allowlist + git subcommands + find actions + cp/mv ----
+function cls(cmd: string) { const p = parseCommand(cmd); return "argv" in p ? classifyCommand(p.argv) : { error: "parse" }; }
+ok("kind" in cls("cat foo.go") && (cls("cat foo.go") as any).kind === "readonly", "classify: cat is readonly");
+ok("kind" in cls("git log --oneline -5"), "classify: git log readonly");
+ok("kind" in cls("git show HEAD:install.sh"), "classify: git show readonly");
+ok("kind" in cls("git diff HEAD~1"), "classify: git diff readonly");
+ok("kind" in cls("git config --get user.name"), "classify: git config --get readonly");
+ok("kind" in cls("find src -name '*.go'"), "classify: find (read) readonly");
+for (const c of [
+  "rm -rf /", "python3 x.py", "node x.js", "sed -i s/a/b/ f", "awk '{print}' f",
+  "tee f", "dd if=/dev/zero of=f", "chmod +x f", "perl -i f", "xargs rm",
+  "git push", "git commit -m x", "git checkout .", "git config user.name x",
+  "find . -delete", "find . -exec rm {} ;",
+]) {
+  ok("error" in cls(c), `classify REJECT: ${c}`);
+}
+{
+  const c = cls("cp src/x.go /tmp/ws/x.go");
+  ok("kind" in c && (c as any).kind === "copy" && (c as any).dest === "/tmp/ws/x.go", "classify: cp -> copy with dest");
+  ok("kind" in cls("mv a b") && (cls("mv a b") as any).kind === "copy", "classify: mv -> copy");
+  ok("error" in cls("cp -t dir a"), "classify: cp -t rejected");
+  ok("error" in cls("cp onlyone"), "classify: cp needs src+dest");
+}
+
+// --- destInWorkspace --------------------------------------------------------
+ok(await destInWorkspace(join(ws, "x.go"), ws, outside), "dest absolute inside workspace -> true");
+ok(!(await destInWorkspace(join(outside, "x.go"), ws, outside)), "dest absolute outside workspace -> false");
+ok(!(await destInWorkspace("rel.go", ws, outside)), "dest relative to cwd(outside) -> false");
+ok(await destInWorkspace(ws, ws, outside), "dest is the workspace dir itself -> true");
 
 // --- tool-set helpers -------------------------------------------------------
 ok(

@@ -39,11 +39,17 @@ You have access to:
 - `grep`, `find`, `ls` — search and list files
 - `write-research` — write files to your isolated temp directory (path shown
   in session header)
-- `bash-safe` — execute read-only shell commands (if available)
+- `bash-safe` — run ONE allowlisted read-only command (if available). No shell:
+  no pipes, redirection, globs, or chaining. Allows read-only tools (cat, wc,
+  stat, diff, sort, jq, find without -exec/-delete, …), read-only `git` (log,
+  show, diff, status, blame, …), and `cp`/`mv` only into your workspace.
 
 You do **not** have:
 - `write` or `edit` — you cannot modify repository files
-- Unsafe bash commands — `bash-safe` blocks file modifications
+- A shell or code execution — `bash-safe` will not run `python`/`node`/`go`/
+  test runners or any pipeline. You can READ and COPY-into-workspace, not RUN.
+  Proving something by *executing* code requires a real sandbox (not yet wired
+  up here); until then, demonstrate by reading/tracing, not by running.
 
 If you need to modify files to test something, use `write-research` to create
 a copy in your workspace, modify that, and run experiments there.
@@ -89,30 +95,25 @@ For each piece of evidence, record:
 - What it shows
 - What it does NOT show (boundaries of the evidence)
 
-### Step 4: Test Hypotheses
+### Step 4: Test Hypotheses (statically)
 
-If you have a hypothesis about how something works:
+Research mode is a **read-only jail with no code execution** (see Authority).
+You cannot run a test, script, or build. Verify hypotheses *statically*:
 
-1. **Create a minimal test case** in your workspace using `write-research`
-2. **Copy only what's needed** from the repository (specific files, not entire dirs)
-3. **Run the test** using `bash-safe`
-4. **Record the result** — pass, fail, or inconclusive
-5. **Interpret carefully** — what does this result actually prove?
+1. **Trace the code path by reading it.** Follow the actual call chain with
+   `read`/`grep`/`find`; do not infer behavior from names or resemblance.
+2. **Use read-only inspection** via `bash-safe`: `grep -n`, `diff` two files,
+   `wc`, `git log`/`git show`/`git blame` to see how/when code changed, `jq`
+   over a JSON file, `sha256sum` to compare artifacts.
+3. **Build a written argument** in your workspace (`write-research`): copy the
+   relevant snippets in with `cp`, annotate the trace, state exactly which
+   lines support the conclusion.
+4. **Mark what static analysis cannot settle.** If the only way to know is to
+   *run* it, say so explicitly: "this requires runtime verification, which the
+   read-only jail cannot do — needs a sandbox." Do not guess the runtime result.
 
-Example workspace experiment:
-
-```typescript
-// write-research to: /tmp/pi-research-abc123/test-hypothesis.ts
-import { functionUnderTest } from './copied-from-repo/module.ts';
-
-const result = functionUnderTest('test input');
-console.log('Result:', result);
-```
-
-Then run with `bash-safe`:
-```bash
-cd /tmp/pi-research-abc123 && npx tsx test-hypothesis.ts
-```
+(If runtime proof is essential, that is a signal to escalate out of research
+mode into a sandboxed execution environment, which is not yet wired up here.)
 
 ### Step 5: Identify Gaps
 
@@ -192,8 +193,9 @@ Build your answer from verified facts only:
 - Guess or speculate without labeling it as speculation
 - Use "probably", "likely", "seems to" without explaining the basis
 - Claim certainty about unverified things
-- Modify repository files (use workspace instead)
-- Run unsafe commands (use `bash-safe` which blocks dangerous operations)
+- Modify repository files (use the workspace instead)
+- Run code, tests, or pipelines — there is no shell; `bash-safe` runs one
+  allowlisted read-only command at a time
 - Skip the "I don't know" step when you lack information
 
 ## Example Research Flow
@@ -217,15 +219,14 @@ find . -name "*auth*" -o -name "*session*" -o -name "*token*"
 - grep -r "session.*valid" — found validation logic in 3 files
 ```
 
-**Step 4 — Test** (if needed):
+**Step 4 — Test statically** (if needed):
 ```
-- Copied auth handler and session middleware to workspace
-- Created test request with invalid token
-- Result: correctly rejected with 401
-- Created test with expired token
-- Result: correctly rejected with 401
-- Created test with valid token
-- Result: correctly authorized
+- Traced the token path: handler.go:42 -> validateSession() -> checkExpiry()
+- read checkExpiry(): returns 401 when exp < now (session.go:88-91)
+- read the invalid-token branch: returns 401 before validateSession (handler.go:33)
+- git blame session.go:88 -> expiry check added in a1b2c3d "harden auth"
+- Cannot confirm the 401 is actually emitted at runtime (no execution in the
+  read-only jail) — the conclusion rests on reading the branches above.
 ```
 
 **Step 5 — Identify Gaps**:

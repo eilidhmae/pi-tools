@@ -102,16 +102,31 @@ if you run with `--no-extensions` (discovery disabled).
   taken from the workspace root; absolute paths must resolve inside it. `..` is
   rejected, and a symlink that would escape the workspace is refused (the
   parent directory's real path is checked).
-- **`bash-safe`** — run a read-only shell command. Blocks redirection
-  (`>`, `>>`, `&>`, `2>&1 >`), file-mutating utilities (`rm`, `mv`, `cp`, `tee`,
-  `dd`, `ln`, `mkdir`, `chmod`, …), in-place editors (`sed -i`, `vim`),
-  `find -delete`/`-exec`, package-manager and `git` mutations, `sudo`, and
-  pipe-into-shell. Allows the vetted exception `mktemp -d -t <prefix>`.
+- **`bash-safe`** — run **one** allowlisted read-only command. This is an
+  **allow-only** runner, not a shell: the command is tokenized and executed
+  directly via `exec(argv)`, so there is **no** pipe, redirection, glob,
+  command substitution, or chaining — those are rejected with guidance to run
+  a single command (use `grep`/`find` directly instead of piping). Permitted:
+  - read-only programs (`cat`, `head`, `tail`, `wc`, `stat`, `file`, `ls`,
+    `tree`, `du`, `sort`, `uniq`, `cut`, `diff`, `cmp`, `grep`, `rg`, `find`
+    [without `-exec`/`-delete`/`-fprint`], `jq`, `xxd`, `strings`, `sha256sum`,
+    …);
+  - read-only `git` subcommands (`log`, `show`, `diff`, `status`, `blame`,
+    `ls-files`, `cat-file`, …; `config` only with `--get`/`--list`);
+  - `cp`/`mv` **only when the destination resolves inside the workspace**
+    (the destination's parent directory is realpath-checked against the
+    workspace root).
 
-  **`bash-safe` is a denylist and therefore best-effort.** It is a convenience,
-  not the security boundary. The real boundary is `--tools` excluding `bash`.
-  Treat `bash-safe` as "read-only by default", not "impossible to misuse", and
-  prefer the `--tools` form when the guarantee matters.
+  Because there is no shell and the program must be on the allowlist, this is
+  **fail-safe by construction** — an unlisted program cannot run and a listed
+  one cannot reach a shell. Programmable text tools that can write
+  (`sed`, `awk`, `perl`) and all interpreters (`python`, `node`, …) are *not*
+  on the allowlist. The strongest boundary is still `--tools` excluding `bash`;
+  `bash-safe` is a safe complement to it, not a substitute.
+
+  Residual gap: a listed read-only program with a known sandbox-escape (none in
+  the default set) would still run. The allowlist is conservative for this
+  reason — add entries only after confirming the program cannot write or exec.
 
 ## `/skill:research`
 
