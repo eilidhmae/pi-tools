@@ -15,9 +15,16 @@
 #        - PR #1249  (odysa:fix/adapter-path) — fixes --adapter-path being
 #          silently ignored at mlx_lm.server startup.
 #   4. Installs the rest of the Python deps (fastapi, uvicorn, hf_hub, etc.).
-#   5. Downloads the Qwen3-Coder-30B-A3B-Instruct-4bit base model
-#      (~16 GB) into $HOME/models/.
+#   5. Downloads the primary thinking-adversary model (Qwen3.5-27B, ~17 GB)
+#      flat into $HOME/models/Qwen3.5-27B-4bit, sets/persists HF_HOME=$HOME/models,
+#      and (only with --with-sft) the legacy Qwen3-Coder-30B-A3B base.
 #   6. Verifies pi binary and models.json.
+#
+# Models and HF cache live under $HOME/models (HF_HOME). The primary model is
+# downloaded with --local-dir so it is a FLAT directory with a top-level
+# config.json — mlx_lm.server loads a path, and a bare HF cache tree
+# (blobs/refs/snapshots, no top-level config.json) makes it hang on first
+# request. Override the models root with MODELS_DIR=...
 #
 # What's gated by host memory:
 #   - llama.cpp clone/build + cmake are producer-only (the GGUF
@@ -38,6 +45,23 @@ if [[ "$(uname -m)" != "arm64" ]]; then
 fi
 
 MODELS_DIR="${MODELS_DIR:-$HOME/models}"
+
+# All HuggingFace models/cache live under $MODELS_DIR (~/models by default).
+# Export for this run so `hf download` and repo-id resolution use it, and
+# persist it to the operator's shell rc below (see persist_hf_home). The
+# primary model download uses --local-dir, which is independent of HF_HOME,
+# but everything else (cache, repo-id loads) honours it.
+export HF_HOME="${HF_HOME:-$MODELS_DIR}"
+
+# Primary model: the deployed thinking-adversary base (Qwen3.5-27B, zero-shot).
+# Downloaded flat into $MODELS_DIR so the top level has config.json — what
+# mlx_lm.server needs. (A bare `hf download` cache tree has no top-level
+# config.json and makes the server hang on first request.)
+THINKING_MODEL_REPO="${THINKING_MODEL_REPO:-Jackrong/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled}"
+THINKING_MODEL_DIR="$MODELS_DIR/Qwen3.5-27B-4bit"
+
+# Legacy sft track base (Qwen3-Coder-30B-A3B + LoRA adapters). Only downloaded
+# when --with-sft is passed; the default install serves the thinking track only.
 BASE_MODEL_REPO="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
 BASE_MODEL_DIR="$MODELS_DIR/Qwen3-Coder-30B-A3B-Instruct-4bit"
 MLX_LM_DIR="${MLX_LM_DIR:-$HOME/src/mlx-lm}"
@@ -81,10 +105,15 @@ if (( RAM_GB >= 64 )); then
 else
     WITH_LLAMA_CPP=0
 fi
+# Legacy sft track (Qwen3-Coder-30B-A3B + adapters) is opt-in: the default
+# install serves only the thinking-adversary track. Pass --with-sft to also
+# download the ~16 GB Qwen3-Coder base.
+WITH_SFT=0
 for arg in "$@"; do
     case "$arg" in
         --with-llama-cpp) WITH_LLAMA_CPP=1 ;;
         --no-llama-cpp)   WITH_LLAMA_CPP=0 ;;
+        --with-sft)       WITH_SFT=1 ;;
     esac
 done
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-$HOME/src/llama.cpp}"
@@ -242,16 +271,58 @@ then
     warn "on the supported floor for future MLX releases."
 fi
 
-# 6. Base model
+# 6. Models
 mkdir -p "$MODELS_DIR"
-if [[ ! -d "$BASE_MODEL_DIR" || -z "$(ls -A "$BASE_MODEL_DIR" 2>/dev/null)" ]]; then
-    say "Downloading base model $BASE_MODEL_REPO → $BASE_MODEL_DIR (~16 GB)"
-    hf download "$BASE_MODEL_REPO" --local-dir "$BASE_MODEL_DIR"
+
+# 6a. Primary: thinking-adversary base (the deployed default). Flat --local-dir
+# download so the top level has config.json (mlx_lm.server loads a path, not a
+# cache tree).
+if [[ ! -d "$THINKING_MODEL_DIR" || -z "$(ls -A "$THINKING_MODEL_DIR" 2>/dev/null)" ]]; then
+    say "Downloading thinking model $THINKING_MODEL_REPO → $THINKING_MODEL_DIR (~17 GB)"
+    hf download "$THINKING_MODEL_REPO" --local-dir "$THINKING_MODEL_DIR"
 else
-    say "Base model already present at $BASE_MODEL_DIR"
+    say "Thinking model already present at $THINKING_MODEL_DIR"
+fi
+if [[ ! -f "$THINKING_MODEL_DIR/config.json" ]]; then
+    warn "$THINKING_MODEL_DIR has no top-level config.json — mlx_lm.server will"
+    warn "hang on first request. Re-download flat:"
+    warn "  hf download $THINKING_MODEL_REPO --local-dir $THINKING_MODEL_DIR"
 fi
 
-# 6b. llama.cpp for GGUF conversion (producer-only).
+# 6b. Legacy sft base (Qwen3-Coder-30B-A3B + adapters), opt-in via --with-sft.
+if [[ "$WITH_SFT" -eq 1 ]]; then
+    if [[ ! -d "$BASE_MODEL_DIR" || -z "$(ls -A "$BASE_MODEL_DIR" 2>/dev/null)" ]]; then
+        say "Downloading sft base $BASE_MODEL_REPO → $BASE_MODEL_DIR (~16 GB)"
+        hf download "$BASE_MODEL_REPO" --local-dir "$BASE_MODEL_DIR"
+    else
+        say "sft base already present at $BASE_MODEL_DIR"
+    fi
+else
+    say "Skipping sft base download (thinking track is the default; --with-sft to add it)."
+fi
+
+# 6c. Persist HF_HOME=$MODELS_DIR to the operator's shell rc (idempotent).
+persist_hf_home() {
+    local rc
+    case "${SHELL:-/bin/zsh}" in
+        *zsh)  rc="$HOME/.zshrc" ;;
+        *bash) rc="$HOME/.bashrc" ;;
+        *)     rc="$HOME/.zshrc" ;;
+    esac
+    if [[ -f "$rc" ]] && grep -q 'HF_HOME=' "$rc"; then
+        say "HF_HOME already set in $rc (leaving as-is)"
+        return 0
+    fi
+    {
+        echo ""
+        echo "# pi-tools: keep all HuggingFace models/cache under $MODELS_DIR"
+        echo "export HF_HOME=\"$MODELS_DIR\""
+    } >> "$rc"
+    say "Persisted HF_HOME=$MODELS_DIR to $rc (open a new shell or 'source $rc')"
+}
+persist_hf_home
+
+# 6d. llama.cpp for GGUF conversion (producer-only).
 # The M5 GGUF publishing pipeline (model-plan.md steps 4-6:
 # convert_hf_to_gguf.py + llama-quantize) needs the Metal build. Gated by
 # WITH_LLAMA_CPP (default ON >=64 GB; --no-llama-cpp to skip). When
@@ -299,23 +370,25 @@ cat <<BANNER
 Bootstrap complete.
 
   Patched mlx-lm: $MLX_LM_DIR  (branch: $MLX_LM_BRANCH)
-  Base model:     $BASE_MODEL_DIR
+  Thinking model: $THINKING_MODEL_DIR
+  HF_HOME:        $HF_HOME
   Venv:           $PY_ENV
 
 Next:
-  1. Bring up the inference stack:
-       bash $(cd "$(dirname "$0")" && pwd)/mlx-server.sh up
+  1. Bring up the inference stack (thinking-adversary track is the default):
+       bash $(cd "$(dirname "$0")" && pwd)/mlx-server.sh up thinking
 
   2. Sanity check:
        curl -sS http://localhost:18080/healthz | jq .
        curl -sS http://localhost:18080/v1/models | jq .
 
-  3. Use it:
-       pi --provider local-mlx --model qwen3-coder-30b-a3b "your task"
+  3. Use it (uses the thinking model default from settings.json):
+       pi -p "Reply with one word: ready"
 
-  Optional: pull an adapter and add it to mlx-lm-multi/adapters.conf
-  (each enabled row adds ~16 GB resident; on 32 GB hosts, run at most one).
+  Legacy sft track (Qwen3-Coder-30B-A3B + LoRA adapters) is opt-in: re-run
+  with --with-sft to download its base, then `mlx-server.sh up sft`.
 
-See ../MODELS.md for the full operator guide.
+See ../MODELS.md for the full operator guide and
+../docs/ONBOARDING-APPLE-SILICON.md for a fresh-machine walkthrough.
 ================================================================================
 BANNER

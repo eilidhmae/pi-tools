@@ -2,7 +2,16 @@
 
 Pi-native port of the orchestrator / manager / worker / adversary agent system
 from [claude-tools-library](https://github.com/eilidhmae/claude-tools-library),
-adapted for `pi-coding-agent` + Ollama + qwen3-coder.
+adapted for `pi-coding-agent` running against a local MLX inference stack.
+
+Built and primarily tested on Apple M5 Max / 128 GB; runs on smaller Apple
+Silicon too (the install auto-tunes on < 64 GB hosts). The default deployment is
+the **thinking-adversary** track: one `mlx_lm.server` serving **Qwen3.5-27B-4bit**
+at `127.0.0.1:18080`. A legacy Ollama / `qwen3-coder` adapter track is opt-in.
+
+> **New machine?** Follow
+> [`docs/ONBOARDING-APPLE-SILICON.md`](docs/ONBOARDING-APPLE-SILICON.md) — it
+> covers the `~/models` layout, the patched mlx-lm, and the upgrade path.
 
 ## What this is
 
@@ -72,7 +81,7 @@ Writes to `~/.pi/agent/`:
 ```
 ~/.pi/agent/
 ├── AGENTS.md
-├── models.json                       # created if absent; ollama defaults
+├── models.json                       # created/merged; local-mlx + thinking-model default
 ├── skills/{adversary,manager,orchestrator,worker}/SKILL.md
 ├── prompts/adversary-review.md
 ├── extensions/{adversary-hook,quorum}.ts
@@ -164,26 +173,35 @@ Reviews land under `pi-tools/reviews/<basename>-<timestamp>.md`
 
 ## Models
 
-Two runtime paths over the **same** underlying model — Qwen3-Coder
-30B-A3B (MoE, 3B activated of 30B total, 262K context, non-thinking
-mode only):
+- **Default — thinking-adversary (Apple Silicon):** one `mlx_lm.server`
+  serving **Qwen3.5-27B-4bit** (a reasoning model) at `127.0.0.1:18080`,
+  zero-shot, no adapters. Model + HF cache live under `~/models`
+  (`HF_HOME=~/models`); served via the **patched** mlx-lm (PR #1277/#1249).
+  Set up by `server/bootstrap-mac.sh`; run with `server/mlx-server.sh up thinking`.
+- **Legacy sft track (opt-in):** `qwen3-coder-30b-a3b` (4-bit MLX, MoE,
+  non-thinking) + hot-swappable LoRA adapters (`+go`, `+rust`, `+python`,
+  `+tf`, `+adversary`) behind a proxy on :18080. Enable with
+  `bootstrap-mac.sh --with-sft` then `mlx-server.sh up sft`.
+- **Ollama (`qwen3-coder:30b`):** non-Apple fallback, no MLX requirement.
 
-- **Existing (default)**: `qwen3-coder:30b` via Ollama. Strong
-  tool-calling, no Apple-Silicon requirement.
-- **New (M5 Max + Apple Silicon)**: `qwen3-coder-30b-a3b` (4-bit MLX)
-  with hot-swappable LoRA adapters (`+go`, `+rust`, `+python`, `+tf`,
-  `+adversary`) served via `mlx_lm.server` or MOLA on `localhost:18080`.
+The harness is model-agnostic: selection flows through `--model` and
+`models.json`. `install.sh` creates/merges `~/.pi/agent/models.json` and sets
+the thinking model as the default, respecting any settings you already have.
 
-The harness is adapter-agnostic: model selection flows through `--model`
-and `models.json`. Today's Ollama users see no behavior change.
+See [`docs/ONBOARDING-APPLE-SILICON.md`](docs/ONBOARDING-APPLE-SILICON.md) for
+setup, [`MODELS.md`](MODELS.md) for the adapter operator guide, and
+[`model-plan.md`](model-plan.md) for design rationale.
 
-See [`MODELS.md`](MODELS.md) for the operator entry point (where adapter
-artifacts live, how to run pi with each one, dogfood procedure) and
-[`model-plan.md`](model-plan.md) for the full design rationale.
+## Upgrading
 
-`install.sh` creates `~/.pi/agent/models.json` with both providers
-(ollama + local-mlx) if one does not already exist. The local-mlx
-provider points at the inference server in [`server/`](server/).
+```bash
+cd ~/src/pi-tools && git checkout main && bash server/upgrade.sh
+```
+
+`server/upgrade.sh` fast-forwards `main`, refreshes the patched mlx-lm + venv
+(re-running `bootstrap-mac.sh`), re-installs the harness in **merge mode**
+(your `models.json` / `settings.json` are backed up, not clobbered), verifies
+the patched build, and restarts the server. It refuses to run on a dirty tree.
 
 ## Usage
 

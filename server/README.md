@@ -10,36 +10,41 @@ their own ports (`:18100+`) as sibling providers.
 
 | Track          | When to use                                                | Memory   | Stability  |
 | -------------- | ---------------------------------------------------------- | -------- | ---------- |
-| `mlx-lm-multi` | **Default Qwen track**. Rock-solid. One `mlx_lm.server` per adapter. | ~5 GB ×N | Stable     |
-| `mola`         | **Opt-in Qwen track**. One base + multiple adapters resident. | ~5 GB    | Alpha      |
-| `extra-models` | **Side-by-side contrast servers** for heterogeneous quorum. One process per config row. | ~5 GB ×N | Stable     |
+| `thinking`     | **Default.** Single `mlx_lm.server` serving Qwen3.5-27B (reasoning model), zero-shot, no adapters. | ~11–14 GB | Stable |
+| `sft`          | **Legacy/opt-in.** Qwen3-Coder-30B-A3B base + per-adapter `mlx_lm.server` behind a proxy (the `mlx-lm-multi/` implementation). | ~11 GB ×N | Stable |
+| `mola`         | Opt-in. One base + multiple adapters resident in one process. | ~11 GB | Alpha |
+| `extra-models` | Side-by-side contrast servers for heterogeneous quorum. One process per config row. | ~11 GB ×N | Stable |
 
-`mlx-server.sh` is the operator entry point — it wraps the Qwen-track
-launcher and additionally starts/stops/monitors each contrast server
-declared in `extra-models/config.conf`:
+`thinking` and `sft` both bind :18080, so only one runs at a time.
+`mlx-server.sh` is the operator entry point — it wraps the chosen track launcher
+and additionally starts/stops/monitors each contrast server declared in
+`extra-models/config.conf`:
 
 ```bash
-bash mlx-server.sh up                  # Qwen + all uncommented extras
-bash mlx-server.sh up qwen|<name>      # one track
-bash mlx-server.sh down                # stop everything
+bash mlx-server.sh up                  # thinking (default) + all uncommented extras
+bash mlx-server.sh up thinking|sft     # one primary track
+bash mlx-server.sh down [thinking|sft] # stop everything / one track
 bash mlx-server.sh status              # listeners + /healthz + venv
 bash mlx-server.sh list                # configured tracks
-bash mlx-server.sh logs [base|<name>]  # tail
+bash mlx-server.sh logs [thinking|sft|<name>]  # tail
 ```
 
 See [`HEALTH.md`](HEALTH.md) for switching, fallback, and what to watch,
 and [`extra-models/README.md`](extra-models/README.md) for adding a
 contrast model.
 
-## First-time setup (M5 Max only)
+## First-time setup (any Apple Silicon)
 
 ```bash
 ./bootstrap-mac.sh
 ```
 
-Installs MLX 26.2+, downloads the base model, builds `llama.cpp` for
-GGUF conversion, and confirms the Apple Neural Accelerators are visible.
-Idempotent.
+Creates the venv, installs the **patched** mlx-lm (PR #1277/#1249), sets
+`HF_HOME=~/models`, and downloads the Qwen3.5-27B thinking model flat into
+`~/models`. Idempotent. On < 64 GB hosts it skips the llama.cpp build and the
+launcher auto-tunes the server budget. Add `--with-sft` for the legacy
+Qwen3-Coder adapter base. Full walkthrough:
+[`../docs/ONBOARDING-APPLE-SILICON.md`](../docs/ONBOARDING-APPLE-SILICON.md).
 
 ### Autostart via launchd
 
@@ -56,10 +61,13 @@ launchctl load ~/Library/LaunchAgents/dev.eilidhmae.pi-mlx.plist
 
 ```
 server/
-├── bootstrap-mac.sh           # one-shot M5 Max setup
+├── bootstrap-mac.sh           # one-shot Apple Silicon setup (venv, patched mlx-lm, model)
+├── upgrade.sh                 # pull main + refresh stack + restart (merge-safe)
 ├── models.json.template       # copy into ~/.pi/agent/models.json
 ├── HEALTH.md                  # operator runbook
 ├── mlx-server.sh              # up/down/status/logs for all tracks
+├── thinking-adversary/        # default track: single Qwen3.5-27B sidecar
+│   └── launch.sh
 ├── mlx-lm-multi/
 │   ├── adapters.conf          # adapter_name port adapter_path  (one per line)
 │   ├── launch.sh              # starts all configured backends + proxy

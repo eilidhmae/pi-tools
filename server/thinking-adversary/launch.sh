@@ -62,9 +62,22 @@ PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv}"
 MODEL_DIR="${MODEL_DIR:-$HOME/models/Qwen3.5-27B-4bit}"
 PORT="${PORT:-18080}"
 HOST="${HOST:-127.0.0.1}"
-MAX_TOKENS="${MAX_TOKENS:-8192}"
+
+# Memory-aware defaults. The committed 8192-token / 1 GiB-cache values are tuned
+# for a 128 GB box and trip `[metal::malloc] Resource limit exceeded` on smaller
+# Apple Silicon. On <64 GB hosts, default lower. Explicit MAX_TOKENS= /
+# PROMPT_CACHE_BYTES= env overrides always win (they're honoured below).
+RAM_GB=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
+if (( RAM_GB > 0 && RAM_GB < 64 )); then
+    DEFAULT_MAX_TOKENS=4096
+    DEFAULT_PROMPT_CACHE_BYTES=536870912    # 512 MiB
+else
+    DEFAULT_MAX_TOKENS=8192
+    DEFAULT_PROMPT_CACHE_BYTES=1073741824   # 1 GiB
+fi
+MAX_TOKENS="${MAX_TOKENS:-$DEFAULT_MAX_TOKENS}"
 PROMPT_CACHE_SIZE="${PROMPT_CACHE_SIZE:-4}"
-PROMPT_CACHE_BYTES="${PROMPT_CACHE_BYTES:-1073741824}"
+PROMPT_CACHE_BYTES="${PROMPT_CACHE_BYTES:-$DEFAULT_PROMPT_CACHE_BYTES}"
 
 mkdir -p "$PIDS_DIR" "$LOG_DIR"
 PIDFILE="$PIDS_DIR/server.pid"
@@ -98,8 +111,20 @@ case "${1:-up}" in
     ;;
 esac
 
-[[ -d "$MODEL_DIR" ]] || { echo "model dir missing: $MODEL_DIR (override via MODEL_DIR=...)" >&2; exit 1; }
-[[ -x "$PY_ENV/bin/mlx_lm.server" ]] || { echo "venv mlx_lm.server missing: $PY_ENV/bin/mlx_lm.server" >&2; exit 1; }
+[[ -d "$MODEL_DIR" ]] || { echo "model dir missing: $MODEL_DIR (override via MODEL_DIR=...; or run server/bootstrap-mac.sh to download it)" >&2; exit 1; }
+# Fail fast on the HF-cache-tree trap: mlx_lm.server loads a path and needs a
+# top-level config.json. A bare `hf download` cache tree (blobs/refs/snapshots,
+# config.json only under snapshots/<hash>/) loads lazily in a worker thread that
+# dies with FileNotFoundError, leaving every request hung. Catch it here instead.
+if [[ ! -f "$MODEL_DIR/config.json" ]]; then
+    echo "model dir has no top-level config.json: $MODEL_DIR" >&2
+    if compgen -G "$MODEL_DIR/snapshots/*/config.json" >/dev/null 2>&1; then
+        echo "  -> this looks like a HuggingFace cache tree. mlx_lm.server needs a FLAT dir." >&2
+        echo "     Re-download with --local-dir:  hf download <repo> --local-dir $MODEL_DIR" >&2
+    fi
+    exit 1
+fi
+[[ -x "$PY_ENV/bin/mlx_lm.server" ]] || { echo "venv mlx_lm.server missing: $PY_ENV/bin/mlx_lm.server (run server/bootstrap-mac.sh)" >&2; exit 1; }
 
 stop_existing
 

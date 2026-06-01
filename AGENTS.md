@@ -162,9 +162,42 @@ but harness enforcement is the primary guarantee.
 verdicts and spawns peer adversary sessions as pi RPC subprocesses. The
 `QUORUM_PEER` token prevents recursion.
 
-**qwen3-coder note:** this model does not generate `<think>` blocks. The
-step-by-step structure in skill prompts acts as the reasoning scaffold. Do not
-attempt to enable thinking mode — it is not supported.
+**Reasoning / `<think>` blocks:** the default model (Qwen3.5-27B, thinking
+track) *does* emit `<think>` reasoning; the patched mlx-lm splits it into
+`message.reasoning` rather than leaking it into `content` (see Inference Stack
+below). The legacy sft model `qwen3-coder-30b-a3b` does *not* generate
+`<think>` blocks — there the step-by-step structure in skill prompts is the
+only reasoning scaffold.
+
+## Inference Stack (local MLX)
+
+Default deployment on Apple Silicon:
+
+- **Server:** one `mlx_lm.server` (the *thinking-adversary* track) on
+  `127.0.0.1:18080`, OpenAI-compatible. Up/down with
+  `server/mlx-server.sh up|down thinking`. No proxy, no LoRA adapters.
+- **Model:** `~/models/Qwen3.5-27B-4bit` (a reasoning model). The pi `local-mlx`
+  provider and the `settings.json` default both point at this path — the id *is*
+  the path, because the server resolves the request `model` as a filesystem path.
+- **Models / cache:** everything lives under `~/models` (`HF_HOME=~/models`). A
+  model dir must be FLAT (top-level `config.json`); an HF cache tree
+  (`blobs/refs/snapshots/`) makes the server hang on first request.
+- **Patched mlx-lm:** the venv (`~/.pi/agent/venv`) runs an editable build from
+  `~/src/mlx-lm` carrying PR #1277 (think-state) + PR #1249 (adapter-path).
+  `server/bootstrap-mac.sh` creates/patches it; `server/upgrade.sh` refreshes it.
+- **Legacy sft track** (`qwen3-coder-30b-a3b` + adapters, proxy on :18080) is
+  opt-in: `bootstrap-mac.sh --with-sft`, then `mlx-server.sh up sft`.
+
+Troubleshooting (when a session hangs or errors):
+
+- **Prompt hangs, zero output, GPU idle** → the model dir is likely an HF cache
+  tree. Confirm `~/models/Qwen3.5-27B-4bit/config.json` exists at the top level;
+  re-download flat with `hf download <repo> --local-dir <dir>`.
+- **`[metal::malloc] Resource limit exceeded` / empty replies** → lower the
+  server budget: `MAX_TOKENS=4096 PROMPT_CACHE_BYTES=536870912` (the launcher
+  auto-tunes this on <64 GB hosts).
+- **`venv ... missing`** → run `server/bootstrap-mac.sh`.
+- Full setup & upgrade walkthrough: `docs/ONBOARDING-APPLE-SILICON.md`.
 
 ## Development Workflow
 
