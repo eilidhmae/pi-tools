@@ -53,11 +53,14 @@ MODELS_DIR="${MODELS_DIR:-$HOME/models}"
 # but everything else (cache, repo-id loads) honours it.
 export HF_HOME="${HF_HOME:-$MODELS_DIR}"
 
-# Primary model: the deployed thinking-adversary base (Qwen3.5-27B, zero-shot).
+# Primary model: the deployed thinking-adversary base — the mlx-community
+# 4-bit MLX conversion of base Qwen3.5-27B (zero-shot; thinking via the chat
+# template). This is the exact model the M5 Max reference box serves, so the
+# default must match it byte-for-byte; do NOT substitute a distilled variant.
 # Downloaded flat into $MODELS_DIR so the top level has config.json — what
 # mlx_lm.server needs. (A bare `hf download` cache tree has no top-level
 # config.json and makes the server hang on first request.)
-THINKING_MODEL_REPO="${THINKING_MODEL_REPO:-Jackrong/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled}"
+THINKING_MODEL_REPO="${THINKING_MODEL_REPO:-mlx-community/Qwen3.5-27B-4bit}"
 THINKING_MODEL_DIR="$MODELS_DIR/Qwen3.5-27B-4bit"
 
 # Legacy sft track base (Qwen3-Coder-30B-A3B + LoRA adapters). Only downloaded
