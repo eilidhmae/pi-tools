@@ -61,6 +61,13 @@ export HF_HOME="${HF_HOME:-$MODELS_DIR}"
 # mlx_lm.server needs. (A bare `hf download` cache tree has no top-level
 # config.json and makes the server hang on first request.)
 THINKING_MODEL_REPO="${THINKING_MODEL_REPO:-mlx-community/Qwen3.5-27B-4bit}"
+# Pin the exact HF revision so every box gets byte-identical weights as the M5
+# Max reference box (whose local copy is this commit). Without a pin, `hf
+# download` tracks the repo's moving HEAD and a future re-quant upstream would
+# silently diverge installs. The drift check in 6a warns when upstream moves
+# past this pin; bump it deliberately after re-validating. Override with
+# THINKING_MODEL_REV= (e.g. =main to deliberately track HEAD).
+THINKING_MODEL_REV="${THINKING_MODEL_REV:-45797d2985a12c55e6473686e9ea91b95e959553}"
 THINKING_MODEL_DIR="$MODELS_DIR/Qwen3.5-27B-4bit"
 
 # Legacy sft track base (Qwen3-Coder-30B-A3B + LoRA adapters). Only downloaded
@@ -281,15 +288,33 @@ mkdir -p "$MODELS_DIR"
 # download so the top level has config.json (mlx_lm.server loads a path, not a
 # cache tree).
 if [[ ! -d "$THINKING_MODEL_DIR" || -z "$(ls -A "$THINKING_MODEL_DIR" 2>/dev/null)" ]]; then
-    say "Downloading thinking model $THINKING_MODEL_REPO → $THINKING_MODEL_DIR (~17 GB)"
-    hf download "$THINKING_MODEL_REPO" --local-dir "$THINKING_MODEL_DIR"
+    say "Downloading thinking model $THINKING_MODEL_REPO@${THINKING_MODEL_REV:0:12} → $THINKING_MODEL_DIR (~17 GB)"
+    hf download "$THINKING_MODEL_REPO" --revision "$THINKING_MODEL_REV" --local-dir "$THINKING_MODEL_DIR"
 else
     say "Thinking model already present at $THINKING_MODEL_DIR"
 fi
 if [[ ! -f "$THINKING_MODEL_DIR/config.json" ]]; then
     warn "$THINKING_MODEL_DIR has no top-level config.json — mlx_lm.server will"
     warn "hang on first request. Re-download flat:"
-    warn "  hf download $THINKING_MODEL_REPO --local-dir $THINKING_MODEL_DIR"
+    warn "  hf download $THINKING_MODEL_REPO --revision $THINKING_MODEL_REV --local-dir $THINKING_MODEL_DIR"
+fi
+
+# Drift check: warn (don't fail) when upstream HEAD has moved past our pinned
+# revision, so the pin is a deliberate choice and not a silent freeze. Cheap
+# HF API call; skipped quietly when offline or when tracking HEAD on purpose.
+if [[ "$THINKING_MODEL_REV" != "main" ]]; then
+    REMOTE_REV="$(curl -fsS -m 15 "https://huggingface.co/api/models/$THINKING_MODEL_REPO" 2>/dev/null \
+        | jq -r '.sha // empty' 2>/dev/null || true)"
+    if [[ -z "$REMOTE_REV" ]]; then
+        say "Model revision drift check skipped (couldn't reach HF; offline?)."
+    elif [[ "$REMOTE_REV" == "$THINKING_MODEL_REV" ]]; then
+        say "Thinking model pinned at upstream HEAD (${THINKING_MODEL_REV:0:12}) — up to date."
+    else
+        warn "Thinking model UPSTREAM UPDATED: $THINKING_MODEL_REPO HEAD is now"
+        warn "  ${REMOTE_REV:0:12}, pinned is ${THINKING_MODEL_REV:0:12}."
+        warn "To adopt it: re-validate, then bump THINKING_MODEL_REV in this script"
+        warn "to $REMOTE_REV and re-download (delete $THINKING_MODEL_DIR first)."
+    fi
 fi
 
 # 6b. Legacy sft base (Qwen3-Coder-30B-A3B + adapters), opt-in via --with-sft.
