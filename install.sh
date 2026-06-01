@@ -232,10 +232,11 @@ chmod +x "${SCRIPTS_DIR}/gen-review-revise.sh"
 # mlx-server.sh and the mlx-lm-multi/mola launchers reference each other
 # by SCRIPT_DIR-relative paths, so they must run from the pi-tools tree.
 # Installing them under ~/.pi/agent/ would break those relative paths.
-if [[ -f "$SCRIPT_DIR/server/mlx-server.sh" ]]; then
-  chmod +x "$SCRIPT_DIR/server/mlx-server.sh"
-fi
-for sh in "$SCRIPT_DIR/server/mlx-lm-multi"/*.sh "$SCRIPT_DIR/server/mola"/*.sh; do
+for launcher in mlx-server.sh bootstrap-mac.sh upgrade.sh; do
+  [[ -f "$SCRIPT_DIR/server/$launcher" ]] && chmod +x "$SCRIPT_DIR/server/$launcher"
+done
+for sh in "$SCRIPT_DIR/server/mlx-lm-multi"/*.sh "$SCRIPT_DIR/server/mola"/*.sh \
+          "$SCRIPT_DIR/server/thinking-adversary"/*.sh; do
   [[ -f "$sh" ]] && chmod +x "$sh"
 done
 
@@ -378,11 +379,14 @@ fi
 # default is decided by models.json declaration order — historically
 # ollama-first, which is the wrong target on arm64.
 #
-# On arm64 we set defaultProvider=local-mlx + defaultModel=qwen3-coder-30b-a3b.
-# We do clobber a pre-existing `ollama` default (because that's exactly
-# the wrong-default bug we're fixing), but we leave any other explicit
-# defaultProvider value alone so operators can pin a different target.
-# Set PI_TOOLS_KEEP_DEFAULTS=1 to suppress the rewrite entirely.
+# On arm64 we set defaultProvider=local-mlx + defaultModel=~/models/Qwen3.5-27B-4bit
+# (the deployed thinking-adversary model; the id is the literal model dir
+# because mlx_lm.server resolves the request `model` as a path).
+# We do clobber a pre-existing `ollama` default — and the older local-mlx
+# default `qwen3-coder-30b-a3b` (the legacy sft base) — because those are
+# exactly the wrong-default bug we're fixing. We leave any other explicit
+# defaultProvider/defaultModel value alone so operators can pin a different
+# target. Set PI_TOOLS_KEEP_DEFAULTS=1 to suppress the rewrite entirely.
 SETTINGS_JSON="${PI_AGENT_DIR}/settings.json"
 if [[ "$IS_ARM64" -eq 1 ]] && [[ -z "${PI_TOOLS_KEEP_DEFAULTS:-}" ]]; then
   rc=0
@@ -405,9 +409,19 @@ current_model = data.get("defaultModel")
 #   - no defaults are set, OR
 #   - defaults currently point at ollama (the wrong-target bug).
 # Leave any other explicit value alone.
+# The deployed default is the thinking-adversary track (single Qwen3.5-27B
+# sidecar). mlx_lm.server resolves the request `model` as a path, so the
+# models.json id — and this default — is the literal model dir.
+default_model = os.path.expanduser("~/models/Qwen3.5-27B-4bit")
 ollama_defaults = {None, "", "ollama"}
-provider_ok_to_overwrite = current_provider in ollama_defaults
-model_ok_to_overwrite = current_model in ollama_defaults | {"qwen3-coder", "qwen3-coder:30b", "qwen3-coder-next"}
+# Overwrite the provider when it's unset/ollama OR already local-mlx (so an
+# already-bootstrapped box with a stale local-mlx default gets migrated too).
+provider_ok_to_overwrite = current_provider in (ollama_defaults | {"local-mlx"})
+# Overwrite the model only when it's a known stale default (ollama ids or the
+# legacy sft base qwen3-coder-30b-a3b). A deliberately-pinned custom model —
+# under any provider — is left alone because model_ok_to_overwrite is False.
+stale_model_defaults = ollama_defaults | {"qwen3-coder", "qwen3-coder:30b", "qwen3-coder-next", "qwen3-coder-30b-a3b"}
+model_ok_to_overwrite = current_model in stale_model_defaults
 if not (provider_ok_to_overwrite and model_ok_to_overwrite):
     print(f"  NOTE: {path} has non-ollama defaults (provider={current_provider!r}, model={current_model!r}); leaving as-is.")
     print("        Set PI_TOOLS_KEEP_DEFAULTS=1 to silence; delete the keys to force overwrite.")
@@ -417,12 +431,12 @@ if existed:
     shutil.copy2(path, backup)
     print(f"  Backup: {backup}")
 data["defaultProvider"] = "local-mlx"
-data["defaultModel"] = "qwen3-coder-30b-a3b"
+data["defaultModel"] = default_model
 os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
-print(f"  Set: defaultProvider=local-mlx, defaultModel=qwen3-coder-30b-a3b")
+print(f"  Set: defaultProvider=local-mlx, defaultModel={default_model}")
 PYEOF
   case "$rc" in
     0)

@@ -2,6 +2,13 @@
 
 How to find and run pi with the Qwen3-Coder LoRA adapters.
 
+> **Note — this is the opt-in `sft`/adapter track, not the default.** The
+> deployed default is the **thinking-adversary** track (single Qwen3.5-27B
+> `mlx_lm.server`, no adapters) — see
+> [`docs/ONBOARDING-APPLE-SILICON.md`](docs/ONBOARDING-APPLE-SILICON.md). This
+> document covers the Qwen3-Coder + LoRA adapter workflow, enabled with
+> `server/bootstrap-mac.sh --with-sft` and `server/mlx-server.sh up sft`.
+
 This document is the entry point for any agent or operator using the
 adapter-based pi workflow. The full design rationale is in
 [`model-plan.md`](model-plan.md).
@@ -40,7 +47,9 @@ managers/workers with adapters chosen from the routing table in
 ### Base model
 
 `mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit` on Hugging Face. Downloaded
-to `~/models/Qwen3-Coder-30B-A3B-Instruct-4bit/` by `server/bootstrap-mac.sh`.
+to `~/models/Qwen3-Coder-30B-A3B-Instruct-4bit/` by
+`server/bootstrap-mac.sh --with-sft` (the sft base is opt-in; the default
+install downloads only the Qwen3.5-27B thinking model).
 
 ### Adapters (one GitHub repo per adapter, all MIT, all public)
 

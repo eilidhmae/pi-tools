@@ -1,17 +1,27 @@
 # Inference Server Runbook
 
+> **Scope:** the **default** deployment is the `thinking` track — a single
+> `mlx_lm.server` (Qwen3.5-27B, no proxy, no adapters). For that track and
+> fresh-machine setup, see
+> [`../docs/ONBOARDING-APPLE-SILICON.md`](../docs/ONBOARDING-APPLE-SILICON.md);
+> for 32 GB capacity, see [`../M2-MAX-32GB-FINDINGS.md`](../M2-MAX-32GB-FINDINGS.md).
+> **This runbook below covers the legacy `sft` track** (`mlx-lm-multi` / `mola`),
+> which adds a routing proxy and LoRA adapters.
+
 ## Which track am I running?
 
 ```bash
-curl -sS http://localhost:18080/healthz | jq .track
-# → "mlx-lm-multi"  or  "mola"
+curl -sS http://localhost:18080/v1/models | jq .        # works for any track
+curl -sS http://localhost:18080/healthz   | jq .track   # sft proxy → "mlx-lm-multi"/"mola"
 ```
 
-Both expose `/v1/chat/completions`, `/v1/models`, `/healthz`.
+The sft tracks expose `/v1/chat/completions`, `/v1/models`, `/healthz`. The
+thinking track has no proxy, so `/healthz` is mlx_lm.server's built-in and
+carries no `.track` field.
 
 ## When to use which
 
-**Default to `mlx-lm-multi`.** Pick `mola` only after you have validated
+**Within the sft track, default to `mlx-lm-multi`.** Pick `mola` only after you have validated
 it on this exact M5 Max for at least one full week of normal pi usage
 without crashes or wedged adapters.
 
@@ -125,7 +135,8 @@ knowing so you don't burn time looking for a CLI knob that isn't there.
   applied" above). `ModelProvider.load` looks up the adapter by the *resolved*
   model path instead of the request key, so it never matches. One-line fix:
   resolve `adapter_path`/`draft_model_path` from `_adapter_map`/`_draft_model_map`
-  *before* the `model_path = self._model_map.get(...)` remap. Patch the venv
-  checkout and PR upstream; until then `verify-adapter.sh` is the guard.
+  *before* the `model_path = self._model_map.get(...)` remap. **`server/bootstrap-mac.sh`
+  applies this as PR #1249** in the patched venv build; `verify-adapter.sh` remains
+  the output-level guard.
 - Track upstream:
   <https://github.com/ml-explore/mlx-examples/tree/main/llms/mlx_lm>.
