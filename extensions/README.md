@@ -85,6 +85,46 @@ recursively invoking another.
 Quorum peers spawned by `quorum.ts` (the automatic CONCERNS/FAIL quorum) are
 also jailed read-only now — they no longer get raw `bash`.
 
+## Research worker (`research-worker.ts`)
+
+The general-purpose sibling of adversary review: instead of reviewing a fixed
+file, it dispatches a jailed worker to carry out a **free-form research/analysis
+task**. Exposed two ways (same code path, both run
+`scripts/bash/research-jailed.sh`):
+
+- **`research-worker` tool** — agent-invokable, **gated by `--tools`** exactly
+  like `write-research`/`bash-safe`, so the session agent can spawn workers
+  itself. Opt in:
+
+  ```bash
+  pi --tools read,grep,find,ls,write-research,bash-safe,research-worker --research
+  ```
+
+- **`/research "<prompt>" [--label <slug>]` command** — human-typed; always
+  present (commands aren't `--tools`-gated). Works outside research mode too
+  (the worker gets a fresh temp workspace and its path is reported).
+
+The worker is spawned as a pi session jailed **identically to the research
+agent** (read-only repo + `bash-safe` + `write-research`, `--research`) with the
+`research` skill as its system prompt, so it never has more authority than the
+agent that invoked it. When the invoker is in research mode, its workspace is
+passed via `PI_RESEARCH_WORKSPACE`, so the worker **inherits the same workspace**
+— its notes (via `write-research`) and its final report (under
+`<workspace>/reports/`) land there. A dispatched worker cannot fan out further:
+it is spawned with `--no-extensions -e research-mode.ts` + a restricted `--tools`
+so the `research-worker` tool isn't loaded in the child, with a
+`PI_RESEARCH_WORKER_CHILD`/`PI_ADVERSARY_CHILD` env guard as the backstop.
+
+> Same rationale as adversary review for a dedicated tool over a `bash-safe`
+> allowlist entry: `bash-safe` matches by basename, so a workspace-planted
+> `research-jailed.sh` would execute. A purpose-built tool whose only effect is
+> "spawn a jailed read-only worker that writes into a workspace" keeps the jail
+> invariant intact.
+
+The worker is read-only and cannot execute code (no `python`/`node`/test
+runners). Tasks needing runtime proof are out of scope until a real sandbox is
+wired up — see *Deferred: workspace/repo execute tool* in `RESEARCH-MODE.md`.
+
 ## Security model
 
 The jail is **allow-only**, not a denylist:

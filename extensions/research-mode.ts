@@ -53,11 +53,17 @@ const KEEP_IF_PRESENT = ["ask_question"];
 /**
  * Tools from sibling extensions that are safe inside the jail and kept active
  * when `--tools` admitted them. `adversary-review` (extensions/adversary-review.ts)
- * spawns a read-only reviewer that writes only into the workspace, so it is
- * jail-safe. Kept here — but deliberately NOT in the required RESEARCH_TOOLS —
- * so omitting it from `--tools` does not trip the "degraded" protection warning.
+ * and `research-worker` (extensions/research-worker.ts) each spawn a read-only
+ * pi session that writes only into the workspace, so they are jail-safe to keep
+ * active for a human-started research session. A *dispatched* child cannot fan
+ * out further: the jailed spawner runs it with `--no-extensions -e
+ * research-mode.ts` and a restricted `--tools`, so neither dispatch tool is even
+ * loaded there (and a PI_RESEARCH_WORKER_CHILD / PI_ADVERSARY_CHILD env guard on
+ * each tool is the backstop). Kept here — but deliberately NOT in the required
+ * RESEARCH_TOOLS — so omitting them from `--tools` does not trip the "degraded"
+ * protection warning.
  */
-const SIBLING_TOOLS_KEPT = ["adversary-review"];
+const SIBLING_TOOLS_KEPT = ["adversary-review", "research-worker"];
 
 /**
  * The active tool set we want in research mode, intersected with what is
