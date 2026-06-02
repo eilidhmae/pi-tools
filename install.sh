@@ -24,10 +24,12 @@
 #   extensions/adversary-hook.ts               → extensions/adversary-hook.ts  (PostWrite check)
 #   extensions/quorum.ts                       → extensions/quorum.ts  (adversary quorum)
 #   extensions/adversary-review.ts             → extensions/adversary-review.ts  (adversary-review tool + /adversary-pass)
+#   extensions/research-worker.ts              → extensions/research-worker.ts  (research-worker tool + /research)
 #   extensions/lib/*.ts                        → extensions/lib/*.ts  (helper modules)
 #   scripts/bash/adversary-check.sh              → scripts/adversary-check.sh
 #   scripts/bash/adversary-pass.sh               → scripts/adversary-pass.sh
 #   scripts/bash/adversary-jailed.sh             → scripts/adversary-jailed.sh
+#   scripts/bash/research-jailed.sh              → scripts/research-jailed.sh
 #   scripts/bash/adversary-scan.sh               → scripts/adversary-scan.sh
 #   scripts/bash/adversary-loop.sh               → scripts/adversary-loop.sh
 #   scripts/bash/capture-review.sh               → scripts/capture-review.sh
@@ -142,6 +144,14 @@ install_file \
   "$SCRIPT_DIR/extensions/adversary-review.ts" \
   "$PI_AGENT_DIR/extensions/adversary-review.ts"
 
+# Research worker: the `research-worker` tool (agent-invokable, gated by --tools)
+# + the `/research "<prompt>"` command. Both spawn a jailed research worker
+# (research-jailed.sh) that writes its report into the research workspace. Opt
+# the tool in with --tools ...,research-worker.
+install_file \
+  "$SCRIPT_DIR/extensions/research-worker.ts" \
+  "$PI_AGENT_DIR/extensions/research-worker.ts"
+
 # Default role: light coordinator persona + situational tool guidance for bare
 # `pi` (defers to research mode / restricted sessions). Opt out: --no-default-role.
 install_file \
@@ -203,6 +213,12 @@ install_file \
   "$SCRIPT_DIR/scripts/bash/adversary-jailed.sh" \
   "${SCRIPTS_DIR}/adversary-jailed.sh"
 chmod +x "${SCRIPTS_DIR}/adversary-jailed.sh"
+
+# Tool-enabled research worker inside the research-mode jail (read-only + bash-safe).
+install_file \
+  "$SCRIPT_DIR/scripts/bash/research-jailed.sh" \
+  "${SCRIPTS_DIR}/research-jailed.sh"
+chmod +x "${SCRIPTS_DIR}/research-jailed.sh"
 
 install_file \
   "$SCRIPT_DIR/scripts/bash/adversary-scan.sh" \
@@ -489,6 +505,7 @@ echo " Invocation paths:"
 echo ""
 echo "   /adversary-review          # self-review checklist (prompt command)"
 echo "   /adversary-pass <file>     # jailed adversary review of a file (add --quorum for peers)"
+echo "   /research \"<prompt>\"        # dispatch a jailed research worker to do a task"
 echo "   /skill:adversary           # full adversary review"
 echo "   /skill:manager             # manager coordination session"
 echo "   /skill:orchestrator        # orchestrator session"
@@ -511,6 +528,7 @@ echo " Extensions active in all pi sessions:"
 echo "   adversary-hook.ts     (mechanical check after every write/edit)"
 echo "   quorum.ts             (auto-quorum on CONCERNS/FAIL verdicts; peers run jailed read-only)"
 echo "   adversary-review.ts   (/adversary-pass <file> command; adversary-review tool when in --tools)"
+echo "   research-worker.ts    (/research \"<prompt>\" command; research-worker tool when in --tools)"
 echo ""
 echo " Research mode (read-only jail) — research-mode.ts, auto-discovered:"
 echo "   Strongest (harness-level) invocation:"
@@ -520,9 +538,11 @@ echo ""
 echo "   write-research and bash-safe MUST be in --tools — pi's allowlist drops"
 echo "   any tool not listed, and the extension cannot restore it at runtime."
 echo ""
-echo "   Add adversary-review to let the agent self-invoke a jailed adversary review:"
-echo "     pi --tools read,grep,find,ls,write-research,bash-safe,adversary-review --research"
-echo "   (the /adversary-pass <file> command is always available regardless of --tools.)"
+echo "   Add adversary-review / research-worker to let the agent self-invoke a jailed"
+echo "   reviewer or dispatch a jailed research worker:"
+echo "     pi --tools read,grep,find,ls,write-research,bash-safe,adversary-review,research-worker --research"
+echo "   (the /adversary-pass <file> and /research \"<prompt>\" commands are always"
+echo "    available regardless of --tools.)"
 echo ""
 echo "   /research-mode also works without --tools (it deactivates write/edit/bash"
 echo "   itself and warns), and one-shot/print runs can auto-activate with --research:"

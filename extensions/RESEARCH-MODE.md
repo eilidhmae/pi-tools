@@ -160,6 +160,55 @@ Pair with `/skill:research` for the grounded, evidence-first research workflow.
 The skill describes the same tool contract (read-only repo, write only via
 `write-research`); this extension is what *enforces* it.
 
+## Dispatching research workers (`research-worker.ts`)
+
+The sibling `research-worker.ts` extension turns research mode into a **dispatch
+target**: you (or the agent) hand off a free-form research task to a worker that
+runs jailed in the *same* workspace. Two surfaces, one code path (both spawn
+`scripts/bash/research-jailed.sh`):
+
+- **`/research "<prompt>" [--label <slug>]`** — human command, always available.
+- **`research-worker` tool** — agent-invokable; add it to `--tools` so the
+  session agent can spawn workers itself:
+
+  ```
+  pi --tools read,grep,find,ls,write-research,bash-safe,research-worker --research
+  /research "read all the python scripts in this directory and write a summary report"
+  ```
+
+The worker is jailed **identically** to this session (read-only repo +
+`bash-safe` + `write-research`, `--research`) with the `research` skill as its
+system prompt. When research mode is active the worker **inherits this
+workspace** via `PI_RESEARCH_WORKSPACE`: its `write-research` notes and its final
+report (under `<workspace>/reports/`) land here, so you can read what it produced
+with `/research-mode list`. Dispatched from a non-research session, the worker
+gets a fresh temp workspace and reports its path.
+
+Fan-out is one level deep **by construction**: a dispatched worker is spawned
+with `--no-extensions -e research-mode.ts` and a restricted `--tools`, so the
+`research-worker` tool is not loaded in the child at all. A
+`PI_RESEARCH_WORKER_CHILD` / `PI_ADVERSARY_CHILD` env guard on the tool is the
+defense-in-depth backstop (mirrors adversary review). The `/research` command,
+like `/adversary-pass`, is the human entry point and is always available.
+
+## Deferred: workspace/repo execute tool (write XOR execute)
+
+**Not implemented — captured as a design note.** A future extension would let a
+Worker, invoked from a **full-tools** session (one that can already run
+`bash`/`write`), gain a narrow capability on a single file: **write XOR
+execute** — never both at once. Constraints under consideration:
+
+- The target file must live inside the **repo path** or the **workspace path**.
+- The worker may either *write* a source file or *execute* it (invoking an
+  interpreter/compiler over its source files), but not hold both powers
+  simultaneously on the same file.
+
+This is deliberately slow-walked: granting "compile/run my own source" is
+effectively arbitrary code execution, a large escalation over the current
+read-only jail (which has no execution at all — see the `research` skill's
+"needs a sandbox" note). It must move behind careful containment and review, and
+is out of scope for the current research-worker feature.
+
 ## Verifying behavior
 
 Helper logic has a framework-free test:
