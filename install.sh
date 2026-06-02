@@ -23,6 +23,7 @@
 #   prompts/adversary-review.md                → prompts/adversary-review.md  (/adversary-review)
 #   extensions/adversary-hook.ts               → extensions/adversary-hook.ts  (PostWrite check)
 #   extensions/quorum.ts                       → extensions/quorum.ts  (adversary quorum)
+#   extensions/adversary-review.ts             → extensions/adversary-review.ts  (adversary-review tool + /adversary-pass)
 #   extensions/lib/*.ts                        → extensions/lib/*.ts  (helper modules)
 #   scripts/bash/adversary-check.sh              → scripts/adversary-check.sh
 #   scripts/bash/adversary-pass.sh               → scripts/adversary-pass.sh
@@ -133,6 +134,14 @@ install_file \
   "$SCRIPT_DIR/extensions/quorum.ts" \
   "$PI_AGENT_DIR/extensions/quorum.ts"
 
+# Adversary review: the `adversary-review` tool (agent-invokable, gated by
+# --tools) + the `/adversary-pass <file>` command. Both run a jailed adversary
+# (adversary-jailed.sh) saving into the research workspace. Opt the tool in with
+# --tools ...,adversary-review.
+install_file \
+  "$SCRIPT_DIR/extensions/adversary-review.ts" \
+  "$PI_AGENT_DIR/extensions/adversary-review.ts"
+
 # Default role: light coordinator persona + situational tool guidance for bare
 # `pi` (defers to research mode / restricted sessions). Opt out: --no-default-role.
 install_file \
@@ -167,6 +176,10 @@ install_file \
 install_file \
   "$SCRIPT_DIR/extensions/lib/adversary-capture.ts" \
   "$PI_AGENT_DIR/extensions/lib/adversary-capture.ts"
+
+install_file \
+  "$SCRIPT_DIR/extensions/lib/quorum-peer.ts" \
+  "$PI_AGENT_DIR/extensions/lib/quorum-peer.ts"
 
 # Clean up pre-reorg paths if present (upgrade path).
 for stale in adapter-route.ts adversary-parse.ts adversary-capture.ts; do
@@ -475,6 +488,7 @@ echo ""
 echo " Invocation paths:"
 echo ""
 echo "   /adversary-review          # self-review checklist (prompt command)"
+echo "   /adversary-pass <file>     # jailed adversary review of a file (add --quorum for peers)"
 echo "   /skill:adversary           # full adversary review"
 echo "   /skill:manager             # manager coordination session"
 echo "   /skill:orchestrator        # orchestrator session"
@@ -494,8 +508,9 @@ echo "   bash $SCRIPT_DIR/server/mlx-server.sh list    # configured tracks"
 echo "   See $SCRIPT_DIR/server/extra-models/README.md to add a contrast model."
 echo ""
 echo " Extensions active in all pi sessions:"
-echo "   adversary-hook.ts  (mechanical check after every write/edit)"
-echo "   quorum.ts          (auto-quorum on CONCERNS/FAIL verdicts)"
+echo "   adversary-hook.ts     (mechanical check after every write/edit)"
+echo "   quorum.ts             (auto-quorum on CONCERNS/FAIL verdicts; peers run jailed read-only)"
+echo "   adversary-review.ts   (/adversary-pass <file> command; adversary-review tool when in --tools)"
 echo ""
 echo " Research mode (read-only jail) — research-mode.ts, auto-discovered:"
 echo "   Strongest (harness-level) invocation:"
@@ -504,6 +519,10 @@ echo "     Then type: /research-mode   (sets up workspace + jails the agent)"
 echo ""
 echo "   write-research and bash-safe MUST be in --tools — pi's allowlist drops"
 echo "   any tool not listed, and the extension cannot restore it at runtime."
+echo ""
+echo "   Add adversary-review to let the agent self-invoke a jailed adversary review:"
+echo "     pi --tools read,grep,find,ls,write-research,bash-safe,adversary-review --research"
+echo "   (the /adversary-pass <file> command is always available regardless of --tools.)"
 echo ""
 echo "   /research-mode also works without --tools (it deactivates write/edit/bash"
 echo "   itself and warns), and one-shot/print runs can auto-activate with --research:"

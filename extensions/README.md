@@ -51,6 +51,40 @@ pi --tools read,grep,find,ls,write-research,bash-safe /skill:research "How does 
 /research-mode summary    Summarize files written so far
 ```
 
+## Adversary review (`adversary-review.ts`)
+
+A least-privilege way to get an independent adversary review of a file, exposed
+two ways (same code path, both run `scripts/bash/adversary-jailed.sh`):
+
+- **`adversary-review` tool** — agent-invokable, **gated by `--tools`** exactly
+  like `write-research`/`bash-safe`. Only usable inside research mode. Opt in:
+
+  ```bash
+  pi --tools read,grep,find,ls,write-research,bash-safe,adversary-review --research
+  ```
+
+- **`/adversary-pass <file> [--quorum]` command** — human-typed; always present
+  (commands aren't `--tools`-gated). Works outside research mode too (review
+  lands in `./reviews`).
+
+The review spawns the adversary as a pi session jailed **identically to the
+research agent** (read-only repo + `bash-safe` + `write-research`, `--research`),
+so the reviewer never has more authority than the agent that invoked it. The
+invoker's workspace is passed via `PI_RESEARCH_WORKSPACE`, so the reviewer pins
+to the **same** workspace and its report is saved under `<workspace>/reviews/`.
+`--quorum` adds peer reviewers (majority) when the primary verdict is
+CONCERNS/FAIL. A `PI_ADVERSARY_CHILD` guard prevents an adversary from
+recursively invoking another.
+
+> Why a dedicated tool rather than allowlisting the script in `bash-safe`:
+> `bash-safe` matches programs by basename, so a workspace-planted
+> `adversary-jailed.sh` would execute — a jailbreak. A purpose-built tool whose
+> only effect is "spawn a jailed read-only reviewer that writes into the
+> workspace" keeps the jail invariant intact.
+
+Quorum peers spawned by `quorum.ts` (the automatic CONCERNS/FAIL quorum) are
+also jailed read-only now — they no longer get raw `bash`.
+
 ## Security model
 
 The jail is **allow-only**, not a denylist:
