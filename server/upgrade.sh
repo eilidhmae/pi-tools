@@ -37,6 +37,10 @@ warn() { printf "\033[1;33m!! \033[0m %s\n" "$*" >&2; }
 fail() { printf "\033[1;31mxx \033[0m %s\n" "$*" >&2; exit 1; }
 
 # Forward bootstrap-relevant flags (e.g. --with-sft, --with-llama-cpp).
+# Expanded at the call site with the ${arr[@]+...} guard: under `set -u`,
+# bash < 4.4 (macOS ships 3.2) treats "${EMPTY[@]}" as an unbound variable and
+# aborts. The guard yields nothing when no flags were passed, and the flags
+# (quoted, one word each) when they were.
 BOOTSTRAP_ARGS=("$@")
 
 [[ -f "$BOOTSTRAP" ]] || fail "bootstrap-mac.sh not found at $BOOTSTRAP"
@@ -63,7 +67,7 @@ git pull --ff-only origin "$UPGRADE_BRANCH"
 #    venv if missing, skips already-present downloads, preserves a dirty mlx-lm
 #    checkout (bootstrap's own guard).
 say "Refreshing inference stack (bootstrap-mac.sh)"
-bash "$BOOTSTRAP" "${BOOTSTRAP_ARGS[@]}"
+bash "$BOOTSTRAP" ${BOOTSTRAP_ARGS[@]+"${BOOTSTRAP_ARGS[@]}"}
 
 # 3. Refresh installed harness files WITHOUT clobbering user settings.
 say "Re-running installer (merge mode — preserves models.json / settings.json)"
