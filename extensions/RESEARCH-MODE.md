@@ -80,6 +80,12 @@ PI_RESEARCH_WORKSPACE=/tmp/audit-2026 pi --tools read,grep,find,ls,write-researc
 Without the env var, the workspace is a fresh `mktemp -d` under `$TMPDIR`,
 reported on activation and again at session end. Files are never auto-deleted.
 
+On activation the resolved workspace path is also exported as
+`PI_RESEARCH_MODE_WORKSPACE` (and cleared on exit/shutdown), so sibling
+extensions — e.g. `adversary-review.ts` — can pin a spawned reviewer to *this*
+workspace. It is an output of the extension, distinct from the
+`PI_RESEARCH_WORKSPACE` input above.
+
 ## Do I need `-e`?
 
 No. `install.sh` copies `research-mode.ts` into `~/.pi/agent/extensions/`, which
@@ -130,6 +136,23 @@ if you run with `--no-extensions` (discovery disabled).
   Residual gap: a listed read-only program with a known sandbox-escape (none in
   the default set) would still run. The allowlist is conservative for this
   reason — add entries only after confirming the program cannot write or exec.
+
+- **`adversary-review`** *(opt-in; from `adversary-review.ts`)* — run an
+  independent adversary review of a file. Add it to `--tools` to let the agent
+  self-invoke it:
+
+  ```
+  pi --tools read,grep,find,ls,write-research,bash-safe,adversary-review --research
+  ```
+
+  It spawns the adversary as a pi session jailed **identically** to this one
+  (via `adversary-jailed.sh`), pinned to **this** workspace through
+  `PI_RESEARCH_WORKSPACE`, and writes the report under `<workspace>/reviews/`.
+  The human command `/adversary-pass <file> [--quorum]` runs the same thing and
+  is always available. The reviewer therefore never exceeds the research agent's
+  authority, and a `PI_ADVERSARY_CHILD` guard blocks recursive reviews. See the
+  extension README for the rationale (why a dedicated tool, not a `bash-safe`
+  allowlist entry).
 
 ## `/skill:research`
 

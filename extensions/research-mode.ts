@@ -50,6 +50,14 @@ export const MUTATING_BUILTINS = ["write", "edit", "bash"];
 export const RESEARCH_TOOLS = ["write-research", "bash-safe"];
 /** Harmless built-ins kept if present. */
 const KEEP_IF_PRESENT = ["ask_question"];
+/**
+ * Tools from sibling extensions that are safe inside the jail and kept active
+ * when `--tools` admitted them. `adversary-review` (extensions/adversary-review.ts)
+ * spawns a read-only reviewer that writes only into the workspace, so it is
+ * jail-safe. Kept here — but deliberately NOT in the required RESEARCH_TOOLS —
+ * so omitting it from `--tools` does not trip the "degraded" protection warning.
+ */
+const SIBLING_TOOLS_KEPT = ["adversary-review"];
 
 /**
  * The active tool set we want in research mode, intersected with what is
@@ -57,7 +65,7 @@ const KEEP_IF_PRESENT = ["ask_question"];
  * resurrect those, so we only ever keep a subset of `available`.
  */
 export function computeDesiredActiveTools(available: string[]): string[] {
-  const want = new Set([...READONLY_BUILTINS, ...RESEARCH_TOOLS, ...KEEP_IF_PRESENT]);
+  const want = new Set([...READONLY_BUILTINS, ...RESEARCH_TOOLS, ...KEEP_IF_PRESENT, ...SIBLING_TOOLS_KEPT]);
   return available.filter((t) => want.has(t));
 }
 
@@ -550,6 +558,10 @@ export default function (pi: ExtensionAPI) {
     // Same-process signal other extensions (e.g. default-role) can read to tell
     // "research is active" apart from "tools merely restricted".
     process.env.PI_RESEARCH_MODE_ACTIVE = "1";
+    // Export the resolved workspace so sibling extensions (adversary-review.ts)
+    // can pin a spawned reviewer to THIS workspace. The temp workspace would
+    // otherwise be invisible to them (it lives only in this closure).
+    process.env.PI_RESEARCH_MODE_WORKSPACE = workspace;
     applyToolRestriction();
     renderWidget(ctx);
     warnProtection(ctx);
@@ -559,6 +571,7 @@ export default function (pi: ExtensionAPI) {
   function deactivate(ctx: any) {
     researchActive = false;
     delete process.env.PI_RESEARCH_MODE_ACTIVE;
+    delete process.env.PI_RESEARCH_MODE_WORKSPACE;
     if (savedActiveTools) {
       try { pi.setActiveTools(savedActiveTools); } catch { /* tool set may be fixed by --tools */ }
     }
@@ -645,6 +658,7 @@ export default function (pi: ExtensionAPI) {
     // Clear the same-process signal so a later session in this process (e.g.
     // after /reload) is not misread as research-active by other extensions.
     delete process.env.PI_RESEARCH_MODE_ACTIVE;
+    delete process.env.PI_RESEARCH_MODE_WORKSPACE;
     if (researchActive && workspace) {
       // A reload spins up a fresh extension instance with researchActive=false
       // and does not re-trigger auto-activation, so the jail silently drops.

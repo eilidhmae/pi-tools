@@ -33,6 +33,7 @@ import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 
 import { captureFromQuorum, ReviewerOutput } from "./lib/adversary-capture";
+import { buildPeerArgs, findResearchModeExt } from "./lib/quorum-peer";
 
 // --- Configuration ---
 //
@@ -164,16 +165,7 @@ async function spawnPeerAdversary(
 
     const child = spawn(
       "pi",
-      [
-        "--provider", peer.provider,
-        "--model", peer.model,
-        "--temperature", String(peer.temperature),
-        "--tools", "read,grep,ls,bash",
-        "--no-write",
-        "--no-edit",
-        "--no-extensions",          // prevent recursive quorum extension
-        "-p", peerPrompt,
-      ],
+      buildPeerArgs(peer, { researchExtPath: findResearchModeExt(), peerPrompt }),
       {
         env: { ...process.env },
         stdio: ["pipe", "pipe", "pipe"],

@@ -132,6 +132,17 @@ ok(
 ok(assessProtection(["read", "grep", "find", "ls", "write-research", "bash-safe"]).level === "harness", "assess: harness when no mutators");
 ok(assessProtection(["read", "bash", "edit", "write", "grep", "find", "ls", "write-research", "bash-safe"]).level === "extension", "assess: extension when mutators present");
 ok(assessProtection(["read", "grep", "find", "ls"]).level === "degraded", "assess: degraded when research tools missing");
+// adversary-review (sibling tool) is kept active in the jail when --tools admitted it,
+// but never invented when absent, and its absence does not trip "degraded".
+ok(
+  computeDesiredActiveTools(["read", "grep", "find", "ls", "write-research", "bash-safe", "adversary-review", "bash", "edit", "write"]).includes("adversary-review"),
+  "computeDesiredActiveTools keeps adversary-review when present",
+);
+ok(
+  !computeDesiredActiveTools(["read", "grep", "find", "ls", "write-research", "bash-safe", "bash"]).includes("adversary-review"),
+  "computeDesiredActiveTools does not invent adversary-review when absent",
+);
+ok(assessProtection(["read", "grep", "find", "ls", "write-research", "bash-safe"]).level === "harness", "assess: adversary-review optional, not required for harness level");
 
 await rm(ws, { recursive: true, force: true });
 await rm(outside, { recursive: true, force: true });
