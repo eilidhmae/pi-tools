@@ -47,6 +47,12 @@
 #   :18100+ contrast servers (one per row in extra-models/config.conf)
 #
 # Environment overrides:
+#   HOST                  (default 127.0.0.1)               — bind address for
+#                                                             all tracks; set
+#                                                             0.0.0.0 to expose
+#                                                             on all interfaces
+#                                                             (e.g. Apple
+#                                                             Container access)
 #   PI_VENV               (default $HOME/.pi/agent/venv) — python venv
 #   PI_EXPECTED_MLX_PATH  (default empty)               — if set, verify
 #                                                         the venv's mlx_lm
@@ -69,6 +75,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="${PI_VENV:-$HOME/.pi/agent/venv}"
 VENV_PY="$VENV/bin/python"
 MLX_SERVER_BIN="$VENV/bin/mlx_lm.server"
+# Bind address for every track this script launches and the sub-launchers it
+# delegates to (thinking-adversary, mlx-lm-multi). Default 127.0.0.1 (loopback
+# only); set HOST=0.0.0.0 to expose on all interfaces, e.g. so an Apple Container
+# guest reaches the servers via the host bridge (192.168.64.1). Exported so the
+# sub-launchers inherit the same value.
+export HOST="${HOST:-127.0.0.1}"
 PI_MULTI="$SCRIPT_DIR/mlx-lm-multi"
 SFT_LAUNCH="$PI_MULTI/launch.sh"
 SFT_STOP="$PI_MULTI/stop.sh"
@@ -240,7 +252,7 @@ extra_up() {
   nohup "$MLX_SERVER_BIN" \
       --model "$model_dir" \
       --port "$port" \
-      --host 127.0.0.1 \
+      --host "$HOST" \
       --prompt-cache-size 16 \
       --prompt-cache-bytes 2147483648 \
       >"$logfile" 2>&1 &

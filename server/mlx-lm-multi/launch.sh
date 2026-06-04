@@ -13,6 +13,10 @@ CONF="$SCRIPT_DIR/adapters.conf"
 BASE_MODEL_DIR="${BASE_MODEL_DIR:-$HOME/models/Qwen3-Coder-30B-A3B-Instruct-4bit}"
 BASE_PORT="${BASE_PORT:-18090}"
 PROXY_PORT="${PROXY_PORT:-18080}"
+# Bind address for the mlx servers AND the proxy. Default 127.0.0.1 (loopback
+# only); set HOST=0.0.0.0 to expose on all interfaces, e.g. so an Apple Container
+# guest can reach them via the host bridge (192.168.64.1).
+HOST="${HOST:-127.0.0.1}"
 PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv}"
 PROMPT_CACHE_SIZE="${PI_PROMPT_CACHE_SIZE:-16}"
 PROMPT_CACHE_BYTES="${PI_PROMPT_CACHE_BYTES:-2147483648}"
@@ -49,7 +53,7 @@ echo "==> base   port=$BASE_PORT  model=$BASE_MODEL_DIR"
 nohup mlx_lm.server \
     --model "$BASE_MODEL_DIR" \
     --port "$BASE_PORT" \
-    --host 127.0.0.1 \
+    --host "$HOST" \
     --prompt-cache-size "$PROMPT_CACHE_SIZE" \
     --prompt-cache-bytes "$PROMPT_CACHE_BYTES" \
     >"$LOG_DIR/base.log" 2>&1 &
@@ -86,7 +90,7 @@ if [[ -f "$CONF" ]]; then
             --model "$BASE_MODEL_DIR" \
             --adapter-path "$adapter_path" \
             --port "$port" \
-            --host 127.0.0.1 \
+            --host "$HOST" \
             --prompt-cache-size "$PROMPT_CACHE_SIZE" \
             --prompt-cache-bytes "$PROMPT_CACHE_BYTES" \
             >"$LOG_DIR/$suffix.log" 2>&1 &
@@ -99,6 +103,7 @@ fi
 export PI_BASE_MODEL_DIR="$BASE_MODEL_DIR"
 export PI_PROXY_ROUTES="$(IFS=, ; echo "${ROUTES[*]}")"
 export PI_PROXY_PORT="$PROXY_PORT"
+export PI_PROXY_HOST="$HOST"
 
 echo "==> proxy  port=$PROXY_PORT  routes=$PI_PROXY_ROUTES"
 nohup python "$SCRIPT_DIR/proxy.py" \
