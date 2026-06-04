@@ -41,6 +41,10 @@ def parse_routes(raw: str) -> dict[str, int]:
 
 ROUTES = parse_routes(os.environ.get("PI_PROXY_ROUTES", ""))
 PORT = int(os.environ.get("PI_PROXY_PORT", "18080"))
+# Bind address. Default 127.0.0.1 (loopback only); set PI_PROXY_HOST=0.0.0.0 to
+# expose on all interfaces. launch.sh derives this from its HOST knob, so the
+# operator only ever sets HOST.
+HOST = os.environ.get("PI_PROXY_HOST", "127.0.0.1")
 BASE_MODEL_DIR = os.environ.get("PI_BASE_MODEL_DIR")
 if not BASE_MODEL_DIR:
     raise SystemExit(
@@ -159,7 +163,7 @@ if __name__ == "__main__":
     # turn it off in production-ish setups with PI_PROXY_RELOAD=0.
     if os.environ.get("PI_PROXY_RELOAD", "1") != "0":
         here = os.path.dirname(os.path.abspath(__file__))
-        uvicorn.run("proxy:app", host="127.0.0.1", port=PORT, log_level="info",
+        uvicorn.run("proxy:app", host=HOST, port=PORT, log_level="info",
                     reload=True, reload_dirs=[here])
     else:
-        uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
+        uvicorn.run(app, host=HOST, port=PORT, log_level="info")

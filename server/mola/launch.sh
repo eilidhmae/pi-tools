@@ -18,6 +18,10 @@ MOLA_DIR="${MOLA_DIR:-$HOME/src/mola}"
 MOLA_REPO="${MOLA_REPO:-https://github.com/Goekdeniz-Guelmez/mlx-lm-mola}"
 BASE_MODEL_DIR="${BASE_MODEL_DIR:-$HOME/models/Qwen3-Coder-30B-A3B-Instruct-4bit}"
 PORT="${PROXY_PORT:-18080}"
+# Bind address. Default 127.0.0.1 (loopback only); set HOST=0.0.0.0 to expose on
+# all interfaces, e.g. so an Apple Container guest reaches mola via the host
+# bridge (192.168.64.1).
+HOST="${HOST:-127.0.0.1}"
 # Isolated venv — the MOLA install patches mlx-lm in-place; do NOT share with
 # the mlx-lm-multi venv.
 PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv-mola}"
@@ -100,7 +104,7 @@ echo "    adapters: ${ADAPTER_ARGS[*]:-(none)}"
 nohup python -m mola.server \
     --model "$BASE_MODEL_DIR" \
     --port "$PORT" \
-    --host 127.0.0.1 \
+    --host "$HOST" \
     "${ADAPTER_ARGS[@]}" \
     >"$LOG_DIR/mola.log" 2>&1 &
 echo $! > "$PIDS_DIR/mola.pid"
