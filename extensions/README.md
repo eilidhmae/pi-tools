@@ -57,7 +57,9 @@ A least-privilege way to get an independent adversary review of a file, exposed
 two ways (same code path, both run `scripts/bash/adversary-jailed.sh`):
 
 - **`adversary-review` tool** — agent-invokable, **gated by `--tools`** exactly
-  like `write-research`/`bash-safe`. Only usable inside research mode. Opt in:
+  like `write-research`/`bash-safe`. Runs in or out of research mode (in research
+  mode the review lands in the workspace; otherwise in `./reviews`). To make it
+  available to the model inside a jailed session, admit it in `--tools`:
 
   ```bash
   pi --tools read,grep,find,ls,write-research,bash-safe,adversary-review --research
@@ -71,7 +73,9 @@ The review spawns the adversary as a pi session jailed **identically to the
 research agent** (read-only repo + `bash-safe` + `write-research`, `--research`),
 so the reviewer never has more authority than the agent that invoked it. The
 invoker's workspace is passed via `PI_RESEARCH_WORKSPACE`, so the reviewer pins
-to the **same** workspace and its report is saved under `<workspace>/reviews/`.
+to the **same** workspace and its report is saved under `<workspace>/reviews/`
+(when no workspace is set — e.g. a non-research session — the report lands in
+`./reviews`).
 `--quorum` adds peer reviewers (majority) when the primary verdict is
 CONCERNS/FAIL. A `PI_ADVERSARY_CHILD` guard prevents an adversary from
 recursively invoking another.
