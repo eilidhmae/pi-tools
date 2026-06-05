@@ -209,8 +209,8 @@ the patched build, and restarts the server. It refuses to run on a dirty tree.
 # Self-review checklist (prompt command, runs in current session)
 pi /adversary-review
 
-# Full adversary skill, read-only
-pi --tools read,grep,ls,bash --no-write --no-edit /skill:adversary
+# Full adversary skill, read-only (jailed: read-only repo + bash-safe, no writes)
+pi --tools read,grep,find,ls,bash-safe,write-research --research /skill:adversary
 
 # Manager- or orchestrator-coordinated session
 pi /skill:manager
@@ -234,9 +234,10 @@ bash ~/.pi/agent/scripts/gen-review-revise.sh specs/feature.md --revise
   Verification Safety, Enqueue-Before-Ack, and resource ceilings.
 - **No `CLAUDE.md`.** Per-project context lives in `PROJECT.md`, which the
   orchestrator creates on first run. Shared rules stay in `AGENTS.md`.
-- **Tool enforcement at the harness level.** The adversary skill is always
-  invoked with `--no-write --no-edit`; read-only authority is mechanical, not
-  just prompt convention.
+- **Tool enforcement at the harness level.** Read-only authority is mechanical,
+  not prompt convention: `adversary-pass.sh` runs the model with `--no-tools`,
+  and `adversary-jailed.sh` uses the `--research` jail (read-only repo +
+  `bash-safe`, no writes). There is no `--no-write/--no-edit` switch in pi 0.77.
 - **Quorum via RPC, not shell loops.** `extensions/quorum.ts` intercepts
   CONCERNS/FAIL verdicts and spawns peer adversary sessions as pi RPC
   subprocesses — no outer shell harness required.

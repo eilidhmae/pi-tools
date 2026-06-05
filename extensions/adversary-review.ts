@@ -4,8 +4,8 @@
  * A first-class, least-privilege adversary review of a file, exposed two ways:
  *
  *   - `adversary-review` TOOL — agent-invokable, gated by `--tools` exactly like
- *     `write-research`/`bash-safe`. Only usable inside research mode (it writes
- *     its review into the research workspace).
+ *     `write-research`/`bash-safe`. Runs in or out of research mode; the review is
+ *     saved into the research workspace when active, otherwise to `./reviews`.
  *   - `/adversary-pass <file> [--quorum]` COMMAND — human-typed; always present
  *     (commands aren't `--tools`-gated). In research mode the review is saved to
  *     the workspace; otherwise to `./reviews`.
@@ -200,16 +200,17 @@ export default function (pi: any) {
     label: "adversary-review",
     description:
       "Run an independent, read-only adversary review of a file. Spawns a separate " +
-      "adversary agent constrained to the SAME research jail you are in (read-only " +
-      "repository + this workspace; no shell, no writes outside the workspace). Its " +
-      "review — prose + a structured adversary-review block ending in PASS/CONCERNS/FAIL " +
-      "— is saved into the workspace. Use it to get an unbiased critique of a research " +
-      "doc or source file. Set quorum=true to also run peer reviewers (majority decides) " +
-      "when the primary verdict is CONCERNS/FAIL.",
-    promptSnippet: "adversary-review: independent jailed adversary review of a file; report saved to the workspace",
+      "adversary agent jailed read-only (read-only repository + a scratch workspace; " +
+      "no shell, no writes outside that workspace) — whether or not you are in research " +
+      "mode. Its review — prose + a structured adversary-review block ending in " +
+      "PASS/CONCERNS/FAIL — is saved into the research workspace when active, otherwise " +
+      "to ./reviews. Use it to get an unbiased critique of a research doc or source " +
+      "file. Set quorum=true to also run peer reviewers (majority decides) when the " +
+      "primary verdict is CONCERNS/FAIL.",
+    promptSnippet: "adversary-review: independent jailed adversary review of a file; report saved to the workspace (or ./reviews outside research mode)",
     promptGuidelines: [
       "Use adversary-review to get a second, independent opinion on a file you produced — it is read-only and cannot change anything.",
-      "The reviewed file may be a workspace path (your research doc) or a repo path; the review is written under <workspace>/reviews/.",
+      "The reviewed file may be a workspace path (your research doc) or a repo path; the review is written under <workspace>/reviews/ in research mode, else ./reviews.",
       "Pass quorum=true for higher-stakes reviews; leave it off for a quick single pass.",
     ],
     parameters: {
@@ -224,17 +225,20 @@ export default function (pi: any) {
       if (process.env.PI_ADVERSARY_CHILD === "1" || process.env.PI_RESEARCH_WORKER_CHILD === "1") {
         return errResult("adversary-review is unavailable inside a dispatched jailed child (recursion guard).");
       }
+      // Not research-gated: the spawned reviewer is jailed read-only by
+      // adversary-jailed.sh's unconditional --research flags regardless of this
+      // session. Research mode only decides WHERE the review file lands — the
+      // workspace when active, else ./reviews (mirrors the /adversary-pass command
+      // and the script's own default). The removed gate was a save-location
+      // coupling, not an authority boundary.
       const { active, workspace } = researchState();
-      if (!active || !workspace) {
-        return errResult("research mode is not active. adversary-review saves into the research workspace — start with --research or run /research-mode.");
-      }
       if (isDiffTarget(params.path)) {
         return errResult(`'${params.path}' is a diff selector; the jailed reviewer takes a file path. Use adversary-pass.sh for HEAD/STAGED/RANGE diffs.`);
       }
       const scriptPath = resolveScriptPath({ cwd: ctx.cwd });
       if (!scriptPath) return errResult("adversary-jailed.sh not found (run install.sh).");
-      const target = resolveTarget(params.path, { researchActive: true, workspace, cwd: ctx.cwd });
-      const r = await runReview({ scriptPath, target, quorum: !!params.quorum, workspace, cwd: ctx.cwd, signal });
+      const target = resolveTarget(params.path, { researchActive: active, workspace, cwd: ctx.cwd });
+      const r = await runReview({ scriptPath, target, quorum: !!params.quorum, workspace: active ? workspace : null, cwd: ctx.cwd, signal });
       const summary = summarizeReview({ verdict: r.verdict, reviewPath: r.reviewPath, quorum: !!params.quorum, target: params.path });
       if (!r.ok) return { content: [{ type: "text", text: `Adversary review failed.\n${tail(r.output)}` }], isError: true };
       return { content: [{ type: "text", text: `${summary}\n\n${tail(r.output)}` }] };

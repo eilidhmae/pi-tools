@@ -148,8 +148,10 @@ if you run with `--no-extensions` (discovery disabled).
   It spawns the adversary as a pi session jailed **identically** to this one
   (via `adversary-jailed.sh`), pinned to **this** workspace through
   `PI_RESEARCH_WORKSPACE`, and writes the report under `<workspace>/reviews/`.
-  The human command `/adversary-pass <file> [--quorum]` runs the same thing and
-  is always available. The reviewer therefore never exceeds the research agent's
+  The tool is **not** research-gated — outside research mode it runs the same
+  jailed reviewer and writes to `./reviews`. The human command
+  `/adversary-pass <file> [--quorum]` runs the same thing and is always
+  available. The reviewer therefore never exceeds the research agent's
   authority, and a `PI_ADVERSARY_CHILD` guard blocks recursive reviews. See the
   extension README for the rationale (why a dedicated tool, not a `bash-safe`
   allowlist entry).

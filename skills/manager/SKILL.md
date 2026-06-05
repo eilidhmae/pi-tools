@@ -163,8 +163,12 @@ Authority"; the harness does not auto-detect or auto-switch.
 ## Adversary Verification Protocol
 
 After every completed worker task, before accepting it, run an adversary review.
-Use `pi --tools read,grep,ls,bash --no-write --no-edit /skill:adversary` or the
-`adversary-pass.sh` shell pipeline. The adversary prompt must include:
+Use a read-only adversary path — either `adversary-pass.sh <target>` (toolless
+inline; takes a file path or a `HEAD`/`STAGED`/`RANGE:` diff selector) or
+`adversary-jailed.sh <path>` (tool-enabled inside the `--research` jail:
+`--tools read,grep,find,ls,bash-safe,write-research`). Do NOT hand the adversary
+raw `bash` — it permits writes via redirection. The adversary prompt must
+include:
 
 - What the worker was asked to do
 - What the worker claims it did
