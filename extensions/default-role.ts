@@ -99,23 +99,34 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event, _ctx) => {
     if (pi.getFlag("no-default-role") === true) return;
 
-    // Research mode owns the framing AND the tool guidance — stay out entirely.
-    // (Set by research-mode in this same process; order-independent.)
+    // Research mode owns the framing AND the tool guidance (it injects its own
+    // `Session mode:` line) — stay out entirely. (Set by research-mode in this
+    // same process; order-independent.)
     if (process.env.PI_RESEARCH_MODE_ACTIVE === "1") return;
 
     const active = pi.getActiveTools();
 
+    // An explicit `Session mode:` line so the model can state its own mode
+    // accurately instead of guessing from defaults. `, containerized` when the
+    // session runs inside the container-harness sandbox.
+    const containerized = process.env.PI_CONTAINER ? ", containerized" : "";
+    const sessionMode = (label: string) => `Session mode: ${label}${containerized}`;
+
     // A jailed toolset (no write/edit/bash) with research NOT active is the
     // "restricted, maybe forgot --research" case: skip the coordinator persona
-    // (a restricted session is task-focused) and contribute only the
-    // always-correct tool-state guidance.
+    // (a restricted session is task-focused) and contribute the always-correct
+    // tool-state guidance under the mode line.
     const jailed = !MUTATING_BUILTINS.some((t) => active.includes(t));
     if (jailed) {
       const guidance = toolStateGuidance(active);
-      if (!guidance) return;
-      return { systemPrompt: `${guidance}\n\n${event.systemPrompt}` };
+      const block = guidance
+        ? `${sessionMode("restricted (read-only)")}\n\n${guidance}`
+        : sessionMode("restricted (read-only)");
+      return { systemPrompt: `${block}\n\n${event.systemPrompt}` };
     }
 
-    return { systemPrompt: `${buildDefaultRole(active)}\n\n${event.systemPrompt}` };
+    return {
+      systemPrompt: `${sessionMode("plain session")}\n\n${buildDefaultRole(active)}\n\n${event.systemPrompt}`,
+    };
   });
 }

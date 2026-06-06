@@ -268,7 +268,10 @@ export function classifyCommand(argv: string[]): { kind: "readonly" } | { kind: 
 
 /** The RESEARCH MODE block prepended to the system prompt while jailed. */
 export function buildResearchSystemPrompt(workspace: string): string {
+  const containerized = process.env.PI_CONTAINER ? ", containerized" : "";
   return [
+    `Session mode: research jail (read-only)${containerized}`,
+    "",
     "# RESEARCH MODE (read-only jail) — ACTIVE",
     "",
     "You are operating in research mode. The repository is READ-ONLY to you.",
