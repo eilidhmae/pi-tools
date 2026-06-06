@@ -5,7 +5,7 @@
 # Global install (default): writes to ~/.pi/agent/
 #   bash install.sh
 #
-# Project-local install: writes to .pi/agent/ in current git repo
+# Project-local install: writes to .pi/agent/ in the current directory (PWD)
 #   bash install.sh --local
 #
 # Options:
@@ -14,9 +14,9 @@
 #   --help, -h           Show this help
 #
 # Components installed (source path → install path under $PI_AGENT_DIR,
-# which is ~/.pi/agent/ in global mode and <repo>/.pi/agent/ in --local
-# mode; shell scripts go to $PI_AGENT_DIR/scripts/ in global mode and
-# <repo>/scripts/bash/ in --local mode):
+# which is ~/.pi/agent/ in global mode and ./.pi/agent/ (PWD) in --local
+# mode; shell scripts go to $PI_AGENT_DIR/scripts/ in both modes —
+# ~/.pi/agent/scripts/ globally, ./.pi/agent/scripts/ in --local):
 #
 #   AGENTS.md                                  → AGENTS.md
 #   skills/<name>/SKILL.md                     → skills/<name>/SKILL.md  (/skill:<name>)
@@ -68,19 +68,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # --- Resolve install target ---
 if [[ "$TARGET_MODE" == "local" ]]; then
-  if ! git rev-parse --is-inside-work-tree &>/dev/null; then
-    echo "ERROR: --local requires the current directory to be inside a git repo." >&2
-    echo "       CWD: $(pwd)" >&2
-    exit 1
-  fi
-  PI_AGENT_DIR="$(git rev-parse --show-toplevel)/.pi/agent"
-  SCRIPTS_DIR="$(git rev-parse --show-toplevel)/scripts/bash"
+  PI_AGENT_DIR="$(pwd)/.pi/agent"
   echo "Installing project-local to: $PI_AGENT_DIR"
 else
   PI_AGENT_DIR="${HOME}/.pi/agent"
-  SCRIPTS_DIR="${HOME}/.pi/agent/scripts"
   echo "Installing globally to: $PI_AGENT_DIR"
 fi
+# Scripts always live under the agent dir so the runtime's project-local
+# resolver (<cwd>/.pi/agent/scripts/) and global resolver
+# (~/.pi/agent/scripts/) both find them.
+SCRIPTS_DIR="$PI_AGENT_DIR/scripts"
 
 # --- Helper functions ---
 
