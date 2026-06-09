@@ -206,3 +206,24 @@ bash server/mlx-server.sh up sft
 ```
 
 See [`../MODELS.md`](../MODELS.md) and [`../server/HEALTH.md`](../server/HEALTH.md).
+
+## 80B session track (opt-in)
+
+The 80B agentic coder (Qwen3-Coder-Next-80B-A3B, 8-bit) drives *interactive*
+pi sessions via the `local-mlx-80b` provider on `:18130`. It is a separate,
+heavy track from the default 27B and is launched directly:
+
+```bash
+bash server/session-80b/launch.sh           # start (downloads ~83 GB on first run)
+curl -sS http://localhost:18130/v1/models | jq .
+bash server/session-80b/launch.sh stop
+```
+
+> **Memory — 128 GB-class hosts only.** The 80B is ~50 GB resident in
+> typical use (MLX mmaps the weights; cold MoE experts stay on disk), up to
+> ~83 GB worst case. The 27B `thinking` track can stay up alongside it, but
+> run **one heavy track at a time** — do not also run the sft / extra-models
+> tracks while the 80B is up. It also needs the patched venv mlx-lm (it
+> emits Qwen3-Coder XML tool calls, which an unpatched server drops).
+
+See [`../server/HEALTH.md`](../server/HEALTH.md) for the runbook.
