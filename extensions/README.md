@@ -129,6 +129,29 @@ The worker is read-only and cannot execute code (no `python`/`node`/test
 runners). Tasks needing runtime proof are out of scope until a real sandbox is
 wired up — see *Deferred: workspace/repo execute tool* in `RESEARCH-MODE.md`.
 
+## Local host override (`local-host-override.ts`)
+
+Point the local MLX providers at a non-loopback host at runtime, without editing
+`models.json`. Set the env var and run:
+
+```bash
+PI_LOCAL_HOST=192.168.64.1 pi        # local providers -> http://192.168.64.1:<port>/v1
+pi                                   # unset (default): unchanged, 127.0.0.1
+```
+
+On startup the extension reads `models.json`, finds providers whose baseUrl is a
+**loopback** host with a port in the MLX band (`18080-18130` — the servers the
+launcher `HOST` knob moves), and `registerProvider`-overrides each with the host
+swapped (port and path preserved). Providers outside that band (e.g. an ollama
+provider on `:11434`) are left alone; unset/loopback `PI_LOCAL_HOST` is a no-op.
+
+Pairs with the server-side `HOST` knob (bind `HOST=192.168.64.1`/`0.0.0.0`) to
+run the whole loop off `127.0.0.1`. Note: the override applies during normal
+extension auto-discovery; loading it ad-hoc with `-e` happens too late to affect
+the first request.
+
+Test: `node --experimental-strip-types extensions/local-host-override.test.ts`.
+
 ## Security model
 
 The jail is **allow-only**, not a denylist:

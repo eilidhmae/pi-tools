@@ -155,6 +155,14 @@ install_file \
   "$SCRIPT_DIR/extensions/default-role.ts" \
   "$PI_AGENT_DIR/extensions/default-role.ts"
 
+# Local host override: opt-in PI_LOCAL_HOST repoints the local MLX providers
+# (loopback baseUrls in the 18080-18130 band) at a non-loopback host, e.g.
+# 192.168.64.1. Unset (default) is a no-op. Used by the container-harness
+# --direct mode and for running the host bank off loopback.
+install_file \
+  "$SCRIPT_DIR/extensions/local-host-override.ts" \
+  "$PI_AGENT_DIR/extensions/local-host-override.ts"
+
 # Research mode extension (read-only jail with isolated write workspace).
 # Single self-contained extension: provides write-research + bash-safe tools,
 # the /research-mode command, system-prompt injection, and tool enforcement.
