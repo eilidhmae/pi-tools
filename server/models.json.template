@@ -53,6 +53,18 @@
       "models": [
         { "id": "mlx-community/deepseek-coder-33b-instruct-hf-4bit-mlx", "name": "DeepSeek-Coder 33B Instruct V1 (MLX 4bit)", "contextWindow": 16384 }
       ]
+    },
+    "local-mlx-q36": {
+      "baseUrl": "http://127.0.0.1:18110/v1",
+      "api": "openai-completions",
+      "apiKey": "local",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        { "id": "mlx-community/Qwen3.6-35B-A3B-8bit", "name": "Qwen3.6-35B-A3B (MLX 8bit, heavy thinking)", "contextWindow": 262144 }
+      ]
     }
   }
 }
