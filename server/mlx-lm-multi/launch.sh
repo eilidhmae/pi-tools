@@ -7,6 +7,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/serverlib.sh
+. "$SCRIPT_DIR/../lib/serverlib.sh"
 PIDS_DIR="$SCRIPT_DIR/pids"
 LOG_DIR="$SCRIPT_DIR/logs"
 CONF="$SCRIPT_DIR/adapters.conf"
@@ -17,6 +19,7 @@ PROXY_PORT="${PROXY_PORT:-18080}"
 # only); set HOST=0.0.0.0 to expose on all interfaces, e.g. so an Apple Container
 # guest can reach them via the host bridge (192.168.64.1).
 HOST="${HOST:-127.0.0.1}"
+require_bindable_host "$HOST" || exit 1
 PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv}"
 PROMPT_CACHE_SIZE="${PI_PROMPT_CACHE_SIZE:-16}"
 PROMPT_CACHE_BYTES="${PI_PROMPT_CACHE_BYTES:-2147483648}"
@@ -110,7 +113,11 @@ nohup python "$SCRIPT_DIR/proxy.py" \
     >"$LOG_DIR/proxy.log" 2>&1 &
 echo $! > "$PIDS_DIR/proxy.pid"
 
-sleep 1
+if wait_listening "$PROXY_PORT" "$(cat "$PIDS_DIR/proxy.pid")" "$LOG_DIR/proxy.log"; then
+  echo "up  proxy listening=$HOST:$PROXY_PORT"
+else
+  exit 1
+fi
 echo
 echo "Logs:    $LOG_DIR"
 echo "Pids:    $PIDS_DIR"

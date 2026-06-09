@@ -72,6 +72,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/serverlib.sh
+. "$SCRIPT_DIR/lib/serverlib.sh"
 VENV="${PI_VENV:-$HOME/.pi/agent/venv}"
 VENV_PY="$VENV/bin/python"
 MLX_SERVER_BIN="$VENV/bin/mlx_lm.server"
@@ -79,7 +81,10 @@ MLX_SERVER_BIN="$VENV/bin/mlx_lm.server"
 # delegates to (thinking-adversary, mlx-lm-multi). Default 127.0.0.1 (loopback
 # only); set HOST=0.0.0.0 to expose on all interfaces, e.g. so an Apple Container
 # guest reaches the servers via the host bridge (192.168.64.1). Exported so the
-# sub-launchers inherit the same value.
+# sub-launchers inherit the same value. A *specific* non-wildcard HOST must be an
+# address currently on a local interface (require_bindable_host pre-flights this):
+# in particular 192.168.64.1, the container vmnet gateway, only exists while a
+# container instance is running — prefer HOST=0.0.0.0 over binding it directly.
 export HOST="${HOST:-127.0.0.1}"
 PI_MULTI="$SCRIPT_DIR/mlx-lm-multi"
 SFT_LAUNCH="$PI_MULTI/launch.sh"
@@ -230,6 +235,7 @@ extra_up() {
   local repo="${EXTRA_REPOS[$idx]}"
 
   require_mlx_server_bin
+  require_bindable_host "$HOST" || die "cannot bind HOST=$HOST (see above)"
 
   local model_dir
   if ! model_dir=$(resolve_hf_snapshot "$repo"); then
@@ -257,9 +263,8 @@ extra_up() {
       --prompt-cache-bytes 2147483648 \
       >"$logfile" 2>&1 &
   echo $! > "$pidfile"
-  sleep 1
-  if extra_pid_alive "$name"; then
-    info "  ${GRN}up${RST} (pid $(cat "$pidfile"))"
+  if wait_listening "$port" "$(cat "$pidfile")" "$logfile"; then
+    info "  ${GRN}up${RST} (pid $(cat "$pidfile"))  listening=$HOST:$port"
   else
     die "$name failed to start; tail $logfile"
   fi

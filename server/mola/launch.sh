@@ -11,6 +11,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/serverlib.sh
+. "$SCRIPT_DIR/../lib/serverlib.sh"
 SHARED_CONF="$SCRIPT_DIR/../mlx-lm-multi/adapters.conf"
 PIDS_DIR="$SCRIPT_DIR/pids"
 LOG_DIR="$SCRIPT_DIR/logs"
@@ -22,6 +24,7 @@ PORT="${PROXY_PORT:-18080}"
 # all interfaces, e.g. so an Apple Container guest reaches mola via the host
 # bridge (192.168.64.1).
 HOST="${HOST:-127.0.0.1}"
+require_bindable_host "$HOST" || exit 1
 # Isolated venv — the MOLA install patches mlx-lm in-place; do NOT share with
 # the mlx-lm-multi venv.
 PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv-mola}"
@@ -109,6 +112,10 @@ nohup python -m mola.server \
     >"$LOG_DIR/mola.log" 2>&1 &
 echo $! > "$PIDS_DIR/mola.pid"
 
-sleep 1
+if wait_listening "$PORT" "$(cat "$PIDS_DIR/mola.pid")" "$LOG_DIR/mola.log"; then
+  echo "up  mola listening=$HOST:$PORT"
+else
+  exit 1
+fi
 echo "Logs:    $LOG_DIR"
 echo "Health:  curl -sS http://localhost:$PORT/healthz | jq ."
