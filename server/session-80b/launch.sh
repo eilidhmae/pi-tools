@@ -20,7 +20,7 @@
 # Env knobs:
 #   MODEL=<repo-id|/flat/dir> ...     # default: inferencerlabs/Qwen3-Coder-Next-MLX-9bit
 #   PORT=18130 ...                    # matches pi's local-mlx-80b provider
-#   MAX_TOKENS=8192 ...               # generation budget
+#   MAX_TOKENS=32768 ...              # generation budget (lower on small hosts)
 #   PROMPT_CACHE_BYTES / PROMPT_CACHE_SIZE
 #
 # Memory: the 80B is ~50 GB resident in typical use (8-bit; MLX mmaps the
@@ -48,7 +48,7 @@ PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv}"
 MODEL="${MODEL:-inferencerlabs/Qwen3-Coder-Next-MLX-9bit}"
 PORT="${PORT:-18130}"
 HOST="${HOST:-127.0.0.1}"
-MAX_TOKENS="${MAX_TOKENS:-8192}"
+MAX_TOKENS="${MAX_TOKENS:-32768}"
 PROMPT_CACHE_SIZE="${PROMPT_CACHE_SIZE:-4}"
 PROMPT_CACHE_BYTES="${PROMPT_CACHE_BYTES:-1073741824}"   # 1 GiB
 
