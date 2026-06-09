@@ -24,10 +24,13 @@
 #
 # Extra-models track (orthogonal to the primary tracks):
 #   Each row in server/extra-models/config.conf declares a
-#   `<short-name> <port> <hf-repo-id>` triple; mlx-server.sh starts
-#   one mlx_lm.server per row, pointed at the named HuggingFace
-#   cache snapshot. Operators wire a matching `local-mlx-<short-name>`
-#   provider in models.json (see server/extra-models/README.md).
+#   `<short-name> <port> <hf-repo-id> [max-tokens]` row; mlx-server.sh
+#   starts one mlx_lm.server per row, pointed at the named HuggingFace
+#   cache snapshot. The 4th column is optional and overrides the
+#   per-server generation ceiling (`--max-tokens`); when absent the row
+#   inherits $MAX_TOKENS (default 32768). Operators wire a matching
+#   `local-mlx-<short-name>` provider in models.json (see
+#   server/extra-models/README.md).
 #
 # Usage:
 #   ./mlx-server.sh up                    # start thinking + all configured extras
@@ -62,6 +65,11 @@
 #                                                         running the open
 #                                                         PR #1277 patch)
 #   HF_HOME               (default $HOME/.cache/huggingface) — HF cache
+#   MAX_TOKENS            (default 32768)                — `--max-tokens`
+#                         generation ceiling for extra-models rows that
+#                         don't set a per-row override (4th config column).
+#                         mlx_lm.server's own default is 512, which
+#                         truncates long answers — hence the explicit floor.
 #   PI_EXTRA_CONF         (default <repo>/server/extra-models/config.conf) —
 #                         path to the extra-models config file; override
 #                         to keep per-workstation choices out of the
@@ -110,10 +118,17 @@ info() { echo "$*"; }
 
 # --- extra-models config loading --------------------------------------------
 
+# `--max-tokens` ceiling for extra-models rows that don't set a per-row
+# override. mlx_lm.server's built-in default is 512, which truncates long
+# answers; floor it generously and let MAX_TOKENS= or a 4th config column
+# tune it down on smaller hosts.
+EXTRA_MAX_TOKENS="${MAX_TOKENS:-32768}"
+
 # Parallel arrays (bash 3.2 compatible — no associative arrays).
 EXTRA_NAMES=()
 EXTRA_PORTS=()
 EXTRA_REPOS=()
+EXTRA_MAXTOK=()
 
 load_extra_config() {
   [[ -f "$EXTRA_CONF" ]] || return 0
@@ -124,13 +139,15 @@ load_extra_config() {
     [[ -z "$line" ]] && continue
     # shellcheck disable=SC2206
     cols=( $line )
-    if [[ ${#cols[@]} -ne 3 ]]; then
+    if [[ ${#cols[@]} -ne 3 && ${#cols[@]} -ne 4 ]]; then
       warn "malformed row in $EXTRA_CONF: $line"
       continue
     fi
     EXTRA_NAMES+=("${cols[0]}")
     EXTRA_PORTS+=("${cols[1]}")
     EXTRA_REPOS+=("${cols[2]}")
+    # 4th column (optional) is a per-row --max-tokens override; empty = default.
+    EXTRA_MAXTOK+=("${cols[3]:-}")
   done < "$EXTRA_CONF"
 }
 
@@ -233,6 +250,9 @@ extra_up() {
   fi
   local port="${EXTRA_PORTS[$idx]}"
   local repo="${EXTRA_REPOS[$idx]}"
+  # Per-row 4th-column override wins; otherwise the $MAX_TOKENS-derived default.
+  local max_tokens="${EXTRA_MAXTOK[$idx]:-}"
+  [[ -n "$max_tokens" ]] || max_tokens="$EXTRA_MAX_TOKENS"
 
   require_mlx_server_bin
   require_bindable_host "$HOST" || die "cannot bind HOST=$HOST (see above)"
@@ -254,11 +274,12 @@ extra_up() {
   logfile=$(extra_log "$name")
   pidfile=$(extra_pid "$name")
 
-  info "  port=$port  model=$model_dir"
+  info "  port=$port  model=$model_dir  max-tokens=$max_tokens"
   nohup "$MLX_SERVER_BIN" \
       --model "$model_dir" \
       --port "$port" \
       --host "$HOST" \
+      --max-tokens "$max_tokens" \
       --prompt-cache-size 16 \
       --prompt-cache-bytes 2147483648 \
       >"$logfile" 2>&1 &

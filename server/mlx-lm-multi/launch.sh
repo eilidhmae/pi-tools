@@ -23,6 +23,9 @@ require_bindable_host "$HOST" || exit 1
 PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv}"
 PROMPT_CACHE_SIZE="${PI_PROMPT_CACHE_SIZE:-16}"
 PROMPT_CACHE_BYTES="${PI_PROMPT_CACHE_BYTES:-2147483648}"
+# Generation ceiling for the base + every adapter server. mlx_lm.server's
+# built-in default is 512, which truncates long answers; floor it generously.
+MAX_TOKENS="${MAX_TOKENS:-32768}"
 
 mkdir -p "$PIDS_DIR" "$LOG_DIR"
 
@@ -57,6 +60,7 @@ nohup mlx_lm.server \
     --model "$BASE_MODEL_DIR" \
     --port "$BASE_PORT" \
     --host "$HOST" \
+    --max-tokens "$MAX_TOKENS" \
     --prompt-cache-size "$PROMPT_CACHE_SIZE" \
     --prompt-cache-bytes "$PROMPT_CACHE_BYTES" \
     >"$LOG_DIR/base.log" 2>&1 &
@@ -94,6 +98,7 @@ if [[ -f "$CONF" ]]; then
             --adapter-path "$adapter_path" \
             --port "$port" \
             --host "$HOST" \
+            --max-tokens "$MAX_TOKENS" \
             --prompt-cache-size "$PROMPT_CACHE_SIZE" \
             --prompt-cache-bytes "$PROMPT_CACHE_BYTES" \
             >"$LOG_DIR/$suffix.log" 2>&1 &
