@@ -222,6 +222,14 @@ Default deployment on Apple Silicon:
   `server/bootstrap-mac.sh` creates/patches it; `server/upgrade.sh` refreshes it.
 - **Legacy sft track** (`qwen3-coder-30b-a3b` + adapters, proxy on :18080) is
   opt-in: `bootstrap-mac.sh --with-sft`, then `mlx-server.sh up sft`.
+- **80B session track** (opt-in, heavy): the `local-mlx-80b` provider —
+  Qwen3-Coder-Next-80B-A3B (8-bit) — on `127.0.0.1:18130`, started directly
+  with `server/session-80b/launch.sh`. For *interactive* sessions; the 27B
+  thinking track stays the default for workers/researchers/adversaries. It
+  coexists with `thinking` but is mutually exclusive with the sft /
+  extra-models heavy tracks (**one heavy track at a time** — ~50 GB resident
+  typical, ≤83 GB worst; 128 GB-class host only). Emits Qwen3-Coder XML tool
+  calls, so it needs the same patched venv mlx-lm.
 
 Troubleshooting (when a session hangs or errors):
 

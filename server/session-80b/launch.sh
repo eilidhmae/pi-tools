@@ -10,8 +10,8 @@
 # heavy SFT / extra-models contrast tracks (memory budget — see below).
 #
 # Unlike thinking-adversary/launch.sh this accepts an HF repo id for
-# MODEL (resolved from the local HF cache under HF_HOME) so the 83 GB
-# weights need not be re-flattened into a second copy.
+# MODEL (resolved from the local HF cache under HF_HOME) so the ~83 GB
+# of weights on disk need not be re-flattened into a second copy.
 #
 # Usage:
 #   ./launch.sh                       # start with defaults
@@ -23,11 +23,13 @@
 #   MAX_TOKENS=8192 ...               # generation budget
 #   PROMPT_CACHE_BYTES / PROMPT_CACHE_SIZE
 #
-# Memory: the 80B is ~83 GB resident (8-bit). Its KV cache is tiny
-# (qwen3_next hybrid linear attention; ~1 GB observed) so context length
-# barely moves memory. But 83 GB + the 27B (~15 GB) + apps approaches the
-# 128 GB ceiling: do NOT also run the SFT (mlx-lm-multi) or extra-models
-# tracks while this is up. One heavy track at a time.
+# Memory: the 80B is ~50 GB resident in typical use (8-bit; MLX mmaps the
+# weights and cold MoE experts stay on disk), up to ~83 GB worst case. Its
+# KV cache is tiny (qwen3_next hybrid linear attention; ~1 GB observed) so
+# context length barely moves memory. But worst-case + the 27B (~15 GB) +
+# apps approaches the 128 GB ceiling: run this only on a 128 GB-class host,
+# and do NOT also run the SFT (mlx-lm-multi) or extra-models tracks while
+# this is up. One heavy track at a time.
 #
 # Tool calls: this model emits Qwen3-Coder XML tool calls
 # (<tool_call>\n<function=...>). Requires the venv mlx-lm with the
@@ -88,7 +90,7 @@ require_bindable_host "$HOST" || exit 1
 # (mlx_lm.server loads it lazily in a worker thread that otherwise dies with
 # FileNotFoundError, hanging every request). An HF repo id (org/name) is passed
 # through and resolved from the HF cache under HF_HOME; warn if it isn't cached
-# yet rather than silently triggering an 83 GB download mid-launch.
+# yet rather than silently triggering an ~83 GB download mid-launch.
 if [[ -d "$MODEL" ]]; then
     if [[ ! -f "$MODEL/config.json" ]]; then
         echo "model dir has no top-level config.json: $MODEL" >&2

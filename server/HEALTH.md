@@ -72,6 +72,30 @@ Reasonable budgets on a 128 GB M5 Max with the default track:
 - macOS + your apps: ~25 GB
 - Headroom: ~70+ GB. If you cross 60 GB resident in inference, reduce
   `adapters.conf`.
+- The `session-80b` track is the one exception to these small budgets: the
+  80B alone is ~50 GB resident, and ~65 GB with the 27B `thinking` track up
+  too — leave the rest as headroom and run no other heavy track alongside.
+
+## 80B session track (:18130)
+
+The `session-80b` track is a separate, opt-in heavy server — the 80B
+agentic coder (`local-mlx-80b`) for interactive sessions, on its own port
+so it can coexist with the 27B `thinking` track. It is **not** part of the
+sft proxy and is launched directly:
+
+```bash
+./session-80b/launch.sh                 # start (or: stop)
+curl -sS http://localhost:18130/v1/models | jq .   # confirm it's up
+```
+
+**Memory rule — one heavy track at a time.** Only run the 80B on a
+128 GB-class machine. It is ~50 GB resident in typical use (MLX mmaps the
+weights; cold MoE experts stay on disk) and ≤83 GB worst case; KV is tiny
+(~1 GB). The 27B `thinking` track (~15 GB) may stay up alongside it, but do
+**not** also run `sft` (`mlx-lm-multi`) or `extra-models` while the 80B is
+up. If you see macOS swapping or `[metal::malloc] Resource limit exceeded`,
+stop one track. The 80B also needs the patched venv mlx-lm (it emits
+Qwen3-Coder XML tool calls; an unpatched server silently drops them).
 
 ## Schema invariants the harness depends on
 
