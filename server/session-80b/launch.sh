@@ -38,6 +38,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/serverlib.sh
+. "$SCRIPT_DIR/../lib/serverlib.sh"
 PIDS_DIR="$SCRIPT_DIR/pids"
 LOG_DIR="$SCRIPT_DIR/logs"
 PY_ENV="${PY_ENV:-$HOME/.pi/agent/venv}"
@@ -80,6 +82,8 @@ case "${1:-up}" in
     ;;
 esac
 
+require_bindable_host "$HOST" || exit 1
+
 # Resolve the model. A flat local dir must carry a top-level config.json
 # (mlx_lm.server loads it lazily in a worker thread that otherwise dies with
 # FileNotFoundError, hanging every request). An HF repo id (org/name) is passed
@@ -120,11 +124,10 @@ nohup mlx_lm.server \
     --prompt-cache-bytes "$PROMPT_CACHE_BYTES" \
     > "$LOGFILE" 2>&1 &
 echo $! > "$PIDFILE"
-sleep 2
 
-if kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-  echo "up (pid $(cat "$PIDFILE"))  log=$LOGFILE"
+pid="$(cat "$PIDFILE")"
+if wait_listening "$PORT" "$pid" "$LOGFILE"; then
+  echo "up (pid $pid)  listening=$HOST:$PORT  log=$LOGFILE"
 else
-  echo "FAILED to start; tail $LOGFILE" >&2
   exit 1
 fi
