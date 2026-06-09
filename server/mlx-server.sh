@@ -22,6 +22,11 @@
 # bare `up` command starts the thinking track plus any configured
 # extras; switch tracks with `down` then `up sft|thinking`.
 #
+# Judge track (orthogonal; binds :18090): bare Qwen3-Coder-30B-A3B-Instruct
+#   base for eval-v2 scoring (judge.py). No proxy, so it coexists with the
+#   thinking track; mutually exclusive with sft (both bind :18090). Started
+#   only on explicit `up judge` (NOT by the bare `up`). Wraps judge/launch.sh.
+#
 # Extra-models track (orthogonal to the primary tracks):
 #   Each row in server/extra-models/config.conf declares a
 #   `<short-name> <port> <hf-repo-id> [max-tokens]` row; mlx-server.sh
@@ -34,19 +39,19 @@
 #
 # Usage:
 #   ./mlx-server.sh up                    # start thinking + all configured extras
-#   ./mlx-server.sh up thinking|sft       # start one primary track
+#   ./mlx-server.sh up thinking|sft|judge # start one named track
 #   ./mlx-server.sh up <extra-name>       # start one extra
 #   ./mlx-server.sh down                  # stop everything
-#   ./mlx-server.sh down thinking|sft     # stop one primary track
+#   ./mlx-server.sh down thinking|sft|judge  # stop one named track
 #   ./mlx-server.sh down <extra-name>     # stop one extra
 #   ./mlx-server.sh status                # listeners + /healthz + venv check
-#   ./mlx-server.sh logs [thinking|sft|<name>]  # tail the chosen log
+#   ./mlx-server.sh logs [thinking|sft|judge|<name>]  # tail the chosen log
 #   ./mlx-server.sh list                  # list configured tracks
 #   ./mlx-server.sh help                  # this message
 #
 # Ports:
 #   :18080  thinking sidecar OR sft routing proxy (mutually exclusive)
-#   :18090  sft base mlx_lm.server (only when sft track is up)
+#   :18090  sft base mlx_lm.server (sft track) OR judge backend (judge track) — mutually exclusive
 #   :18100+ contrast servers (one per row in extra-models/config.conf)
 #
 # Environment overrides:
@@ -101,6 +106,10 @@ SFT_BASE_LOG="$PI_MULTI/logs/base.log"
 THINKING_DIR="$SCRIPT_DIR/thinking-adversary"
 THINKING_LAUNCH="$THINKING_DIR/launch.sh"
 THINKING_LOG="$THINKING_DIR/logs/server.log"
+JUDGE_DIR="$SCRIPT_DIR/judge"
+JUDGE_LAUNCH="$JUDGE_DIR/launch.sh"
+JUDGE_LOG="$JUDGE_DIR/logs/server.log"
+JUDGE_URL="http://localhost:18090"
 PROXY_URL="http://localhost:18080"
 EXPECTED_MLX_PATH="${PI_EXPECTED_MLX_PATH:-}"
 HF_HUB_CACHE="${HF_HOME:-$HOME/.cache/huggingface}/hub"
@@ -190,6 +199,7 @@ require_paths() {
   [[ -x "$SFT_LAUNCH" ]]      || die "sft launch.sh missing: $SFT_LAUNCH"
   [[ -x "$SFT_STOP" ]]        || die "sft stop.sh missing: $SFT_STOP"
   [[ -x "$THINKING_LAUNCH" ]] || die "thinking launch.sh missing: $THINKING_LAUNCH"
+  [[ -x "$JUDGE_LAUNCH" ]]    || die "judge launch.sh missing: $JUDGE_LAUNCH"
 }
 
 require_mlx_server_bin() {
@@ -238,6 +248,19 @@ sft_up() {
 sft_down() {
   info "${BOLD}>>> sft track${RST}"
   "$SFT_STOP"
+}
+
+# --- judge track (eval-v2 scoring backend on :18090, proxy-free) -----------
+# Coexists with the thinking track; mutually exclusive with sft (both :18090).
+
+judge_up() {
+  info "${BOLD}>>> judge track${RST}  (eval-v2 scoring backend on :18090)"
+  "$JUDGE_LAUNCH"
+}
+
+judge_down() {
+  info "${BOLD}>>> judge track${RST}"
+  "$JUDGE_LAUNCH" stop
 }
 
 # --- extra-models track (one per config row) -------------------------------
@@ -356,6 +379,9 @@ cmd_up() {
     sft)
       sft_up
       ;;
+    judge)
+      judge_up
+      ;;
     qwen)
       die "the 'qwen' track has been split: use 'thinking' (default) or 'sft' (legacy multi-adapter)"
       ;;
@@ -363,12 +389,12 @@ cmd_up() {
       if extra_idx "$target" >/dev/null; then
         extra_up "$target"
       else
-        die "unknown track: '$target' (use: all|thinking|sft|${EXTRA_NAMES[*]:-})"
+        die "unknown track: '$target' (use: all|thinking|sft|judge|${EXTRA_NAMES[*]:-})"
       fi
       ;;
   esac
   info ""
-  info "tail logs:    $0 logs [thinking|sft|<name>]"
+  info "tail logs:    $0 logs [thinking|sft|judge|<name>]"
   info "check health: $0 status"
 }
 
@@ -377,9 +403,10 @@ cmd_down() {
   local target="${1:-all}"
   case "$target" in
     all)
-      # Stop both primary tracks; whichever one isn't running is a no-op.
+      # Stop every track; whichever one isn't running is a no-op.
       thinking_down
       sft_down
+      judge_down
       extra_down_all
       ;;
     thinking)
@@ -388,6 +415,9 @@ cmd_down() {
     sft)
       sft_down
       ;;
+    judge)
+      judge_down
+      ;;
     qwen)
       die "the 'qwen' track has been split: use 'thinking' (default) or 'sft' (legacy multi-adapter)"
       ;;
@@ -395,7 +425,7 @@ cmd_down() {
       if extra_idx "$target" >/dev/null; then
         extra_down "$target"
       else
-        die "unknown track: '$target' (use: all|thinking|sft|${EXTRA_NAMES[*]:-})"
+        die "unknown track: '$target' (use: all|thinking|sft|judge|${EXTRA_NAMES[*]:-})"
       fi
       ;;
   esac
@@ -428,6 +458,15 @@ cmd_status() {
   else
     warn "  nothing responding at $PROXY_URL"
   fi
+  info ""
+  info "${BOLD}judge on :18090:${RST}"
+  # /v1/models lists the whole HF cache, not the loaded model, so just probe
+  # responsiveness. Either the sft base or the judge track may own :18090.
+  if curl -sS -m 3 "$JUDGE_URL/v1/models" >/dev/null 2>&1; then
+    info "  responding (sft base or judge track)"
+  else
+    warn "  nothing responding at $JUDGE_URL"
+  fi
   local i name url
   for i in "${!EXTRA_NAMES[@]}"; do
     name="${EXTRA_NAMES[$i]}"
@@ -453,6 +492,7 @@ cmd_logs() {
   case "$which" in
     thinking)       logfile="$THINKING_LOG" ;;
     sft|base)       logfile="$SFT_BASE_LOG" ;;
+    judge)          logfile="$JUDGE_LOG" ;;
     qwen)
       die "the 'qwen' track has been split: use 'thinking' (default) or 'sft' (legacy multi-adapter)"
       ;;
@@ -460,7 +500,7 @@ cmd_logs() {
       if extra_idx "$which" >/dev/null; then
         logfile=$(extra_log "$which")
       else
-        die "unknown log: '$which' (use: thinking|sft|${EXTRA_NAMES[*]:-})"
+        die "unknown log: '$which' (use: thinking|sft|judge|${EXTRA_NAMES[*]:-})"
       fi
       ;;
   esac
@@ -474,6 +514,9 @@ cmd_list() {
   info "  thinking  port=18080  Qwen3.5-27B + thinking (zero-shot)  [DEFAULT]"
   info "  sft       port=18080 (proxy) → 18090 (base) + adapters in mlx-lm-multi/adapters.conf  [LEGACY]"
   info ""
+  info "${BOLD}judge track (:18090; coexists with thinking, conflicts with sft):${RST}"
+  info "  judge     port=18090  Qwen3-Coder-30B-A3B-Instruct (eval-v2 scoring backend)"
+  info ""
   info "${BOLD}extra-models (from $EXTRA_CONF):${RST}"
   if [[ ${#EXTRA_NAMES[@]} -eq 0 ]]; then
     info "  (none configured)"
@@ -486,7 +529,7 @@ cmd_list() {
 }
 
 cmd_help() {
-  sed -n '2,50p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,58p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 load_extra_config
