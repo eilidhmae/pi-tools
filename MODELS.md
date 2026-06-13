@@ -42,6 +42,59 @@ managers/workers with adapters chosen from the routing table in
 
 ---
 
+## Local model roles & memory tiers (RPI)
+
+The deployed local stack splits roles across models. "RPI" =
+**R**esearch → **P**lan → **I**mplement. Reasoning-heavy roles run on the
+262k-context thinking model; the implement step runs on a dense coder.
+
+| Role                                            | Model                              | Provider id                  | Port    | Context | Notes                         |
+| ----------------------------------------------- | ---------------------------------- | ---------------------------- | ------- | ------- | ----------------------------- |
+| Session (interactive) / Adversary / Researcher / Planner | Qwen3.5-27B-4bit          | `local-mlx`                  | `:18080`| 262k    | thinking; session default     |
+| Code Worker / Implementor                       | Qwen2.5-Coder-32B-Instruct-8bit    | `local-mlx-qwen25coder32b`   | `:18111`| 32k     | dense coder                   |
+| Heavy single-session alternate                  | Qwen3-Coder-Next-80B-A3B 8-bit     | `local-mlx-80b`              | `:18130`| —       | MANUAL; 128GB-class only      |
+
+### Two certified memory tiers
+
+Unified memory governs how many tracks co-reside, which decides the map.
+`install.sh` detects unified RAM (`hw.memsize`, overridable with
+`PI_FORCE_MEM_GB`) and provisions accordingly; the floor for the large
+tier is **112 GB** (128GB Macs report 128; 112 sits safely below 128 and
+above any 64/96 box).
+
+- **128GB-class (large tier, certified).** The 27B reasoning track and
+  the ~35 GB 32B Code Worker run **concurrently** — 27B for the
+  reasoning roles, the 32B for the implement step. The 80B is a **manual
+  single-session alternate**: it runs ONE heavy track at a time and
+  spawns no parallel agents. `install.sh` provisions the
+  `local-mlx-qwen25coder32b` provider on this tier.
+- **32GB-class (small tier, certified).** **27B for all roles**
+  (small-context). The 32B Code Worker is **not** provisioned — the
+  ~35 GB worker can't co-reside with the resident 27B. `install.sh`
+  adds nothing extra here (additive-only; it never removes a
+  provider an operator added by hand).
+- **64GB is explicitly UNCERTIFIED** (future-contributor territory) and
+  falls into the conservative small-tier profile until someone certifies
+  it.
+
+The session default stays the 27B (`local-mlx`); the tiering only governs
+which *worker* providers are added.
+
+### How roles reach their model
+
+Role+model-pinned agents are exposed to the session as **pi-extension
+worker tools** (the `research-worker` shape): the session calls a tool,
+the tool dispatches a worker pinned to the right model. The model pin
+lives in the `*-jailed.sh` scripts the worker tool invokes — not in
+`models.json`. The Code Worker additionally depends on the
+`qwen25coder-toolcall` extension, which repairs the dense coder's leaked
+tool calls so they actually dispatch (it's a strict no-op for every other
+model). Note: only the **research-worker** and **adversary** worker
+extensions exist today; the dedicated **Planner** and **Coder** worker
+extensions are a follow-on.
+
+---
+
 ## Where the artifacts live
 
 ### Base model
