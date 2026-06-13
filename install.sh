@@ -71,7 +71,15 @@ if [[ "$TARGET_MODE" == "local" ]]; then
   PI_AGENT_DIR="$(pwd)/.pi/agent"
   echo "Installing project-local to: $PI_AGENT_DIR"
 else
-  PI_AGENT_DIR="${HOME}/.pi/agent"
+  # Honour a pre-set PI_AGENT_DIR (used by tests to point at a throwaway
+  # agent dir); otherwise default to the real global location. Warn loudly
+  # when it's pre-set so a stale exported var can't silently misdirect a
+  # global install.
+  if [[ -n "${PI_AGENT_DIR:-}" ]]; then
+    echo "WARNING: PI_AGENT_DIR is set in the environment — installing to"
+    echo "         $PI_AGENT_DIR instead of ${HOME}/.pi/agent. Unset it for a default install."
+  fi
+  PI_AGENT_DIR="${PI_AGENT_DIR:-${HOME}/.pi/agent}"
   echo "Installing globally to: $PI_AGENT_DIR"
 fi
 # Scripts always live under the agent dir so the runtime's project-local
@@ -99,6 +107,46 @@ install_file() {
 
   cp "$src" "$dst"
   echo "  Installed: $dst"
+}
+
+# Idempotently merge a single named provider from the template into an
+# existing models.json. Additive only: if the provider is already present
+# it does nothing (no backup churn, no dup). Backs up before writing.
+#   $1 = models.json path   $2 = template path   $3 = provider key
+# Echoes what it did. Returns 0 on merged-or-already-present; nonzero only
+# on a real failure (caller decides whether that's fatal).
+merge_provider() {
+  local models_json="$1" template="$2" provider="$3" rc=0
+  python3 - "$models_json" "$template" "$provider" <<'PYEOF' || rc=$?
+import json, sys, shutil, time
+target_path, template_path, provider = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(target_path) as f:
+    target = json.load(f)
+with open(template_path) as f:
+    template = json.load(f)
+if not isinstance(target, dict):
+    print(f"  SKIP: {target_path} is not a JSON object")
+    sys.exit(2)
+target.setdefault("providers", {})
+if not isinstance(target["providers"], dict):
+    print(f"  SKIP: {target_path}.providers is not an object")
+    sys.exit(2)
+if provider not in template.get("providers", {}):
+    print(f"  SKIP: template has no provider {provider!r}")
+    sys.exit(2)
+if provider in target["providers"]:
+    print(f"  Already present: {provider} (no change)")
+    sys.exit(0)
+target["providers"][provider] = template["providers"][provider]
+backup = f"{target_path}.bak.{int(time.time())}"
+shutil.copy2(target_path, backup)
+with open(target_path, "w") as f:
+    json.dump(target, f, indent=2)
+    f.write("\n")
+print(f"  Added: {provider} provider")
+print(f"  Backup: {backup}")
+PYEOF
+  return "$rc"
 }
 
 # --- Install components ---
@@ -162,6 +210,16 @@ install_file \
 install_file \
   "$SCRIPT_DIR/extensions/local-host-override.ts" \
   "$PI_AGENT_DIR/extensions/local-host-override.ts"
+
+# Qwen2.5-Coder-32B tool-call repair: the dense coder on local-mlx-qwen25coder32b
+# emits tool calls as text (<tools>/<tool_call>/bare JSON) that the backend
+# parser drops, so pi never dispatches. This overrides that one provider's
+# stream to rewrite the leaked call into a real toolCall. Strict no-op for every
+# other model (scoped to the provider/model id). No-op too where the model isn't
+# served (provider absent from models.json).
+install_file \
+  "$SCRIPT_DIR/extensions/qwen25coder-toolcall.ts" \
+  "$PI_AGENT_DIR/extensions/qwen25coder-toolcall.ts"
 
 # Research mode extension (read-only jail with isolated write workspace).
 # Single self-contained extension: provides write-research + bash-safe tools,
@@ -290,6 +348,40 @@ TEMPLATE="$SCRIPT_DIR/server/models.json.template"
 IS_ARM64=0
 [[ "$(uname -m)" == "arm64" ]] && IS_ARM64=1
 
+# --- Memory-tier detection (role→model provisioning) ---
+# Unified memory governs how many local-model tracks can co-reside, which
+# decides the role→model map (see MODELS.md "Local model roles & memory
+# tiers (RPI)"). Two CERTIFIED tiers:
+#   large (>= 112 GB, 128GB-class): 27B for reasoning roles + the 32B
+#     Code Worker concurrently (+ 80B as a manual single-session alternate).
+#   small (< 112 GB): 27B for all roles (the 35GB 32B worker can't
+#     co-reside with the resident 27B). 64GB is explicitly UNCERTIFIED and
+#     falls in this conservative profile.
+# 128GB Macs report 128; 112 is a safe floor below 128 and above any 64/96
+# box. PI_FORCE_MEM_GB overrides detection (tests + non-Darwin hosts).
+if [[ -n "${PI_FORCE_MEM_GB:-}" ]]; then
+  MEM_GB="$PI_FORCE_MEM_GB"
+elif [[ "$(uname -s)" == "Darwin" ]]; then
+  # Fall back to 0 (→ small tier) if sysctl is unavailable (restricted
+  # container, future key rename). An empty `$(sysctl …)` expansion would
+  # otherwise make this `$(( / 1073741824 ))` — an arithmetic syntax error
+  # that aborts the whole install under `set -e`.
+  _memraw=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+  MEM_GB=$(( ${_memraw:-0} / 1073741824 ))
+else
+  MEM_GB=0
+fi
+# Non-numeric (e.g. a malformed PI_FORCE_MEM_GB) → conservative small tier,
+# never an aborting error in the -ge comparison below.
+[[ "$MEM_GB" =~ ^[0-9]+$ ]] || MEM_GB=0
+if [[ "$MEM_GB" -ge 112 ]]; then
+  MEM_TIER="large"
+else
+  MEM_TIER="small"
+fi
+echo ""
+echo "=== Memory tier: ${MEM_TIER} (detected ${MEM_GB} GB unified) ==="
+
 # local-mlx baseUrls below use 127.0.0.1 instead of localhost on purpose.
 # On macOS /etc/hosts maps localhost to both 127.0.0.1 and ::1; mlx_lm.server
 # binds IPv4 only. Symptom seen with pi 0.75.5 (Node 26, openai-js 6.26.0)
@@ -404,6 +496,26 @@ PYEOF
   esac
 fi
 
+# --- Provision the 32B Code-Worker provider on the LARGE tier only ---
+# Independent of the local-mlx merge above (which only fires when local-mlx
+# is ABSENT). On a 128GB-class box the 27B reasoning track and the 35GB
+# Qwen2.5-Coder-32B Code Worker co-reside, so we ensure the
+# local-mlx-qwen25coder32b provider is present. Additive + idempotent:
+# re-running adds nothing and churns no backups. On the small tier we add
+# nothing and remove nothing (the worker can't co-reside with the 27B).
+if [[ "$IS_ARM64" -eq 1 ]] && [[ "$MEM_TIER" == "large" ]] && [[ -f "$MODELS_JSON" ]] && [[ -f "$TEMPLATE" ]]; then
+  echo ""
+  echo "=== Code Worker (large tier): ensuring local-mlx-qwen25coder32b in $MODELS_JSON ==="
+  rc=0
+  merge_provider "$MODELS_JSON" "$TEMPLATE" "local-mlx-qwen25coder32b" || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    echo "  WARNING: 32B provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
+  fi
+elif [[ "$IS_ARM64" -eq 1 ]] && [[ "$MEM_TIER" == "small" ]]; then
+  echo ""
+  echo "=== Code Worker: skipped (small tier — 27B serves all roles) ==="
+fi
+
 # --- Apple Silicon default provider/model ---
 #
 # pi 0.74.0's model resolver (core/model-resolver.js findInitialModel)
@@ -506,6 +618,20 @@ echo "=========================================="
 echo " Installation complete."
 echo "=========================================="
 echo ""
+echo " Memory tier: ${MEM_TIER} (${MEM_GB} GB unified)"
+if [[ "$MEM_TIER" == "large" ]]; then
+  echo "   Role → model map (RPI), 128GB-class:"
+  echo "     Session / Adversary / Researcher / Planner → Qwen3.5-27B-4bit (local-mlx, :18080)"
+  echo "     Code Worker / Implementor                  → Qwen2.5-Coder-32B-Instruct-8bit (local-mlx-qwen25coder32b, :18111)"
+  echo "     27B + 32B co-reside; the 80B (local-mlx-80b, :18130) is a MANUAL single-session"
+  echo "     alternate — one heavy track at a time, spawns no parallel agents."
+else
+  echo "   Role → model map (conservative / <128GB-class, 64GB uncertified):"
+  echo "     27B for all roles (small-context); the 32B Code Worker is NOT provisioned"
+  echo "     (it can't co-reside with the resident 27B)."
+fi
+echo "   Full table + doctrine: MODELS.md \"Local model roles & memory tiers (RPI)\"."
+echo ""
 echo " Invocation paths:"
 echo ""
 echo "   /adversary-review          # self-review checklist (prompt command)"
@@ -534,6 +660,7 @@ echo "   adversary-hook.ts     (mechanical check after every write/edit)"
 echo "   quorum.ts             (auto-quorum on CONCERNS/FAIL verdicts; peers run jailed read-only)"
 echo "   adversary-review.ts   (/adversary-pass <file> command; adversary-review tool when in --tools)"
 echo "   research-worker.ts    (/research \"<prompt>\" command; research-worker tool when in --tools)"
+echo "   qwen25coder-toolcall.ts (repairs Qwen2.5-Coder-32B leaked tool calls; no-op for other models)"
 echo ""
 echo " Research mode (read-only jail) — research-mode.ts, auto-discovered:"
 echo "   Strongest (harness-level) invocation:"

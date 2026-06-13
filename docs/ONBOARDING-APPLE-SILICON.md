@@ -24,6 +24,28 @@ needed for normal use — see the end of this doc.
 
 ---
 
+## Model roles & memory tiers
+
+`install.sh` detects unified memory and provisions local-model providers
+for one of two certified tiers:
+
+- **128GB-class (large tier).** The 27B reasoning model
+  (`local-mlx`, `:18080`) serves the Session / Adversary / Researcher /
+  Planner roles, and a **Qwen2.5-Coder-32B** Code Worker
+  (`local-mlx-qwen25coder32b`, `:18111`) runs **concurrently** for the
+  implement step. On this tier `install.sh` also provisions the
+  `local-mlx-qwen25coder32b` provider. (The 80B track is a separate
+  manual single-session alternate — see the end of this doc.)
+- **Smaller hosts (32GB-class).** The 27B serves **all** roles; the
+  ~35 GB 32B Code Worker is **not** provisioned (it can't co-reside with
+  the resident 27B), so `install.sh` adds nothing extra.
+- **64 GB is uncertified** and uses the smaller-host profile for now.
+
+See [`MODELS.md`](../MODELS.md) → "Local model roles & memory tiers (RPI)"
+for the full role→model table and the worker-tool wiring.
+
+---
+
 ## Prerequisites
 
 - Apple Silicon Mac, macOS 26.2+ recommended.
