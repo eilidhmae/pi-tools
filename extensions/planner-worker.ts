@@ -1,38 +1,40 @@
 /**
- * Research Worker Extension
+ * Planner Worker Extension
  *
- * Dispatch a jailed research worker to carry out a free-form research/analysis
- * task, exposed two ways (mirroring adversary-review.ts):
+ * Dispatch a jailed planner worker to read prior research + the target sources
+ * and produce an ordered implementation plan, exposed two ways (mirroring
+ * research-worker.ts):
  *
- *   - `research-worker` TOOL — agent-invokable, gated by `--tools` exactly like
+ *   - `planner-worker` TOOL — agent-invokable, gated by `--tools` exactly like
  *     `write-research`/`bash-safe`. Lets the session agent spawn a worker itself.
- *   - `/research "<prompt>" [--label <slug>]` COMMAND — human-typed; always
+ *   - `/plan "<prompt>" [--label <slug>]` COMMAND — human-typed; always
  *     present (commands aren't `--tools`-gated).
  *
- * Both call one runner that shells out to `research-jailed.sh`, which spawns the
+ * Both call one runner that shells out to `plan-jailed.sh`, which spawns the
  * worker as a pi session jailed identically to the research agent (read-only
- * repo + `bash-safe` + `write-research`, `--research`) with the `research` skill
+ * repo + `bash-safe` + `write-research`, `--research`) with the `plan` skill
  * as its system prompt. The worker therefore never has more authority than the
  * agent that invoked it. If the invoker is in research mode, its workspace is
  * passed via `PI_RESEARCH_WORKSPACE` so the worker auto-jails to the SAME
- * workspace and its report and notes land there; otherwise the script creates a
+ * workspace and its plan and notes land there; otherwise the script creates a
  * fresh temp workspace and reports the path. (Dispatch from a full-tools session
  * is therefore fine — the worker is jailed regardless of the caller's mode.)
  *
  * Why a dedicated tool rather than allowlisting the script in `bash-safe`:
  * `bash-safe` matches programs by basename, so a workspace-planted
- * `research-jailed.sh` would execute — a jailbreak. A purpose-built tool whose
+ * `plan-jailed.sh` would execute — a jailbreak. A purpose-built tool whose
  * only effect is "spawn a jailed read-only worker that writes into a workspace"
  * keeps the jail invariant intact.
  *
  * Recursion is prevented primarily by the jail itself: a dispatched worker is
  * spawned with `--no-extensions -e research-mode.ts` and a restricted `--tools`,
- * so this extension is not even loaded in the child and the `research-worker`
+ * so this extension is not even loaded in the child and the `planner-worker`
  * tool does not exist there. As defense-in-depth the spawned process also carries
- * `PI_RESEARCH_WORKER_CHILD=1`; the tool refuses when that (or the sibling
- * `PI_ADVERSARY_CHILD`) is set, so even a session that DID load this extension
- * cannot auto-dispatch from inside a jailed child. The `/research` command is the
- * human entry point and is always available, exactly mirroring `/adversary-pass`.
+ * `PI_PLANNER_CHILD=1`; the tool refuses when that (or the sibling
+ * `PI_RESEARCH_WORKER_CHILD`/`PI_ADVERSARY_CHILD`) is set, so even a session that
+ * DID load this extension cannot auto-dispatch from inside a jailed child. The
+ * `/plan` command is the human entry point and is always available, exactly
+ * mirroring `/adversary-pass`.
  */
 
 import { spawn } from "node:child_process";
@@ -47,7 +49,7 @@ import { homedir } from "node:os";
 /**
  * Parse the raw command argument into a prompt and an optional label.
  * Strips one matching pair of outer quotes around the whole argument (so the
- * documented `/research "<prompt>"` form works), and pulls a leading
+ * documented `/plan "<prompt>"` form works), and pulls a leading
  * `--label=<slug>` or `--label <slug>` off the front. The remainder, trimmed,
  * is the prompt.
  */
@@ -69,38 +71,38 @@ export function parsePrompt(raw: string): { prompt: string; label: string | null
   return { prompt: s.trim(), label };
 }
 
-/** Locate the installed `research-jailed.sh` (global install first, then a
+/** Locate the installed `plan-jailed.sh` (global install first, then a
  * repo / project-local checkout). */
 export function resolveScriptPath(opts: { home?: string; cwd: string; exists?: (p: string) => boolean }): string | null {
   const exists = opts.exists ?? existsSync;
   const home = opts.home ?? homedir();
   const candidates = [
-    join(home, ".pi/agent/scripts/research-jailed.sh"),
-    join(opts.cwd, "scripts/bash/research-jailed.sh"),
-    join(opts.cwd, ".pi/agent/scripts/research-jailed.sh"),
+    join(home, ".pi/agent/scripts/plan-jailed.sh"),
+    join(opts.cwd, "scripts/bash/plan-jailed.sh"),
+    join(opts.cwd, ".pi/agent/scripts/plan-jailed.sh"),
   ];
   for (const c of candidates) if (exists(c)) return c;
   return null;
 }
 
-/** Extract the saved-report path from the script's combined output. */
-export function parseWorkerOutput(text: string): { reportPath: string | null } {
-  const pm = text.match(/Report written to:[ \t]*(.+)/);
-  return { reportPath: pm ? pm[1].trim() : null };
+/** Extract the saved-plan path from the script's combined output. */
+export function parseWorkerOutput(text: string): { planPath: string | null } {
+  const pm = text.match(/Plan written to:[ \t]*(.+)/);
+  return { planPath: pm ? pm[1].trim() : null };
 }
 
 /** One-line summary for notifications / message display. */
-export function summarizeRun(o: { reportPath: string | null; prompt: string }): string {
+export function summarizeRun(o: { planPath: string | null; prompt: string }): string {
   const head = o.prompt.length > 80 ? `${o.prompt.slice(0, 77)}…` : o.prompt;
-  const where = o.reportPath ? `\nReport: ${o.reportPath}` : "";
-  return `Research worker — "${head}"${where}`;
+  const where = o.planPath ? `\nPlan: ${o.planPath}` : "";
+  return `Planner worker — "${head}"${where}`;
 }
 
 // ---------------------------------------------------------------------------
 // Runner (spawns the jailed worker).
 // ---------------------------------------------------------------------------
 
-interface RunResult { ok: boolean; reportPath: string | null; output: string }
+interface RunResult { ok: boolean; planPath: string | null; output: string }
 
 function runWorker(o: {
   scriptPath: string;
@@ -112,9 +114,9 @@ function runWorker(o: {
 }): Promise<RunResult> {
   const args = [o.scriptPath, o.prompt];
   if (o.label) args.push("--label", o.label);
-  const env: NodeJS.ProcessEnv = { ...process.env, PI_RESEARCH_WORKER_CHILD: "1" };
+  const env: NodeJS.ProcessEnv = { ...process.env, PI_PLANNER_CHILD: "1" };
   // One env var drives both the child's jail (auto-activates research mode
-  // pinned to this workspace) and research-jailed.sh's output dir.
+  // pinned to this workspace) and plan-jailed.sh's output dir.
   if (o.workspace) env.PI_RESEARCH_WORKSPACE = o.workspace;
   else delete env.PI_RESEARCH_WORKSPACE;
   const timeoutMs = 600_000;
@@ -132,14 +134,14 @@ function runWorker(o: {
       settled = true;
       clearTimeout(timer);
       if (extra) out += `\n${extra}`;
-      const { reportPath } = parseWorkerOutput(out);
-      resolve({ ok: code === 0 || reportPath !== null, reportPath, output: out });
+      const { planPath } = parseWorkerOutput(out);
+      resolve({ ok: code === 0 || planPath !== null, planPath, output: out });
     };
 
     const timer = setTimeout(() => {
       if (settled) return;
       child.kill("SIGTERM");
-      settle(null, "[research worker timed out]");
+      settle(null, "[planner worker timed out]");
     }, timeoutMs);
 
     child.on("close", (code) => settle(code));
@@ -157,16 +159,16 @@ function tail(s: string, n = 2500): string {
 }
 
 /**
- * True when running inside a jailed child spawned by any dispatcher (a research
- * worker, a planner worker, or an adversary review). Such a child must not
- * auto-dispatch another agent. Checking every sibling marker (not just our own)
- * closes the cross-tool path — an adversary or planner child that somehow had
+ * True when running inside a jailed child spawned by any dispatcher (a planner
+ * worker, a research worker, or an adversary review). Such a child must not
+ * auto-dispatch another agent. Checking all three markers (not just our own)
+ * closes the cross-tool path — an adversary or research child that somehow had
  * this tool available could otherwise dispatch a worker. (In practice the jailed
  * scripts load only research-mode.ts, so this tool is absent in any child; this
  * is the defense-in-depth backstop.)
  */
 export function inDispatchedChild(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.PI_RESEARCH_WORKER_CHILD === "1" || env.PI_ADVERSARY_CHILD === "1" || env.PI_PLANNER_CHILD === "1";
+  return env.PI_PLANNER_CHILD === "1" || env.PI_RESEARCH_WORKER_CHILD === "1" || env.PI_ADVERSARY_CHILD === "1";
 }
 
 // ---------------------------------------------------------------------------
@@ -180,70 +182,71 @@ export default function (pi: any) {
 
   function notify(ctx: any, message: string, type: "info" | "warning" | "error") {
     if (ctx.hasUI) ctx.ui.notify(message, type);
-    else console.error(`[research-worker] ${message}`);
+    else console.error(`[planner-worker] ${message}`);
   }
 
   const errResult = (text: string) => ({ content: [{ type: "text", text: `Error: ${text}` }], isError: true });
 
-  // --- research-worker tool (agent-invokable; gated by --tools) --------------
+  // --- planner-worker tool (agent-invokable; gated by --tools) ---------------
   pi.registerTool({
-    name: "research-worker",
-    label: "research-worker",
+    name: "planner-worker",
+    label: "planner-worker",
     description:
-      "Spawn a jailed research worker to carry out a research/analysis task. The " +
-      "worker runs as a separate agent constrained to a read-only repository plus " +
-      "an isolated workspace (no shell, no writes outside the workspace, no code " +
-      "execution). It explores with read/grep/find/ls and bash-safe, persists notes " +
-      "and copies with write-research, and produces a grounded, evidence-cited " +
-      "report saved into the workspace. If you are in research mode the worker " +
+      "Spawn a jailed planner worker to read prior research + target sources and " +
+      "produce an ordered implementation plan. The worker runs as a separate agent " +
+      "constrained to a read-only repository plus an isolated workspace (no shell, " +
+      "no writes outside the workspace, no code execution). It explores with " +
+      "read/grep/find/ls and bash-safe, persists notes and copies with " +
+      "write-research, and produces a grounded, file-and-step-level implementation " +
+      "plan saved into the workspace. If you are in research mode the worker " +
       "shares YOUR workspace; otherwise it gets a fresh temp workspace whose path is " +
-      "returned. Use it to delegate a self-contained read-only investigation.",
-    promptSnippet: "research-worker: dispatch a jailed read-only worker to do a research task; report saved to a workspace",
+      "returned. Use it to delegate a self-contained read-only planning task.",
+    promptSnippet: "planner-worker: dispatch a jailed read-only worker to produce an implementation plan; plan saved to a workspace",
     promptGuidelines: [
-      "Use research-worker to delegate a scoped, self-contained investigation (e.g. 'summarize what each script in scripts/bash does'). The worker is read-only — it cannot change the repo.",
+      "Use planner-worker to delegate a scoped, self-contained planning task (e.g. 'read the research report and plan the refactor of scripts/bash'). The worker is read-only — it cannot change the repo.",
       "Give a complete, self-contained prompt; the worker carries no other context.",
-      "Pass an optional label to name the report file; otherwise it is named 'research-<timestamp>.md'.",
+      "Pass an optional label to name the plan file; otherwise it is named 'plan-<timestamp>.md'.",
     ],
     parameters: {
       type: "object",
       properties: {
-        prompt: { type: "string", description: "The research/analysis task for the worker. Must be self-contained." },
-        label: { type: "string", description: "Optional slug used to name the saved report file." },
+        prompt: { type: "string", description: "The planning task for the worker. Must be self-contained." },
+        label: { type: "string", description: "Optional slug used to name the saved plan file." },
       },
       required: ["prompt"],
     },
     execute: async (_toolCallId: string, params: { prompt: string; label?: string }, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: any) => {
       if (inDispatchedChild()) {
-        return errResult("research-worker is unavailable inside a dispatched jailed child (recursion guard).");
+        return errResult("planner-worker is unavailable inside a dispatched jailed child (recursion guard).");
       }
       const prompt = (params.prompt ?? "").trim();
       if (!prompt) return errResult("a non-empty prompt is required.");
       const scriptPath = resolveScriptPath({ cwd: ctx.cwd });
-      if (!scriptPath) return errResult("research-jailed.sh not found (run install.sh).");
+      if (!scriptPath) return errResult("plan-jailed.sh not found (run install.sh).");
       const r = await runWorker({ scriptPath, prompt, label: params.label ?? null, workspace: researchWorkspace(), cwd: ctx.cwd, signal });
-      const summary = summarizeRun({ reportPath: r.reportPath, prompt });
-      if (!r.ok) return { content: [{ type: "text", text: `Research worker failed.\n${tail(r.output)}` }], isError: true };
+      const summary = summarizeRun({ planPath: r.planPath, prompt });
+      if (!r.ok) return { content: [{ type: "text", text: `Planner worker failed.\n${tail(r.output)}` }], isError: true };
       return { content: [{ type: "text", text: `${summary}\n\n${tail(r.output)}` }] };
     },
   });
 
-  // --- /research command (human; always available) ---------------------------
-  pi.registerCommand("research", {
-    description: 'Dispatch a jailed research worker to do a task. Usage: /research "<prompt>" [--label <slug>]',
+  // --- /plan command (human; always available) -------------------------------
+  pi.registerCommand("plan", {
+    description: 'Dispatch a jailed planner worker to produce an implementation plan. Usage: /plan "<prompt>" [--label <slug>]',
     handler: async (args: string, ctx: any) => {
       const { prompt, label } = parsePrompt(args);
-      if (!prompt) { notify(ctx, 'Usage: /research "<prompt>" [--label <slug>]', "error"); return; }
+      if (!prompt) { notify(ctx, 'Usage: /plan "<prompt>" [--label <slug>]', "error"); return; }
       const scriptPath = resolveScriptPath({ cwd: ctx.cwd });
-      if (!scriptPath) { notify(ctx, "research-jailed.sh not found (run install.sh).", "error"); return; }
-      notify(ctx, `Dispatching research worker…`, "info");
+      if (!scriptPath) { notify(ctx, "plan-jailed.sh not found (run install.sh).", "error"); return; }
+      notify(ctx, `Dispatching planner worker…`, "info");
       const r = await runWorker({ scriptPath, prompt, label, workspace: researchWorkspace(), cwd: ctx.cwd, signal: ctx.signal });
-      const summary = summarizeRun({ reportPath: r.reportPath, prompt });
-      notify(ctx, r.ok ? summary : `Research worker failed.\n${tail(r.output, 1200)}`, r.ok ? "info" : "error");
+      const summary = summarizeRun({ planPath: r.planPath, prompt });
+      notify(ctx, r.ok ? summary : `Planner worker failed.\n${tail(r.output, 1200)}`, r.ok ? "info" : "error");
       pi.sendMessage({
-        customType: "research-worker",
+        customType: "planner-worker",
         content:
-          `\n---\n**Research worker** dispatched for: \`${prompt.length > 120 ? `${prompt.slice(0, 117)}…` : prompt}\`` +
-          (r.reportPath ? `\n> Report: ${r.reportPath}` : "\n> (no report path parsed — see output above)"),
+          `\n---\n**Planner worker** dispatched for: \`${prompt.length > 120 ? `${prompt.slice(0, 117)}…` : prompt}\`` +
+          (r.planPath ? `\n> Plan: ${r.planPath}` : "\n> (no plan path parsed — see output above)"),
         display: true,
       });
     },
