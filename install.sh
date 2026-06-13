@@ -26,12 +26,14 @@
 #   extensions/adversary-review.ts             → extensions/adversary-review.ts  (adversary-review tool + /adversary-pass)
 #   extensions/research-worker.ts              → extensions/research-worker.ts  (research-worker tool + /research)
 #   extensions/planner-worker.ts               → extensions/planner-worker.ts  (planner-worker tool + /plan)
+#   extensions/coder-worker.ts                 → extensions/coder-worker.ts  (coder-worker tool + /implement; writes the real repo, non-research only)
 #   extensions/lib/*.ts                        → extensions/lib/*.ts  (helper modules)
 #   scripts/bash/adversary-check.sh              → scripts/adversary-check.sh
 #   scripts/bash/adversary-pass.sh               → scripts/adversary-pass.sh
 #   scripts/bash/adversary-jailed.sh             → scripts/adversary-jailed.sh
 #   scripts/bash/research-jailed.sh              → scripts/research-jailed.sh
 #   scripts/bash/plan-jailed.sh                  → scripts/plan-jailed.sh
+#   scripts/bash/coder-run.sh                    → scripts/coder-run.sh
 #   scripts/bash/adversary-scan.sh               → scripts/adversary-scan.sh
 #   scripts/bash/adversary-loop.sh               → scripts/adversary-loop.sh
 #   scripts/bash/capture-review.sh               → scripts/capture-review.sh
@@ -207,6 +209,16 @@ install_file \
   "$SCRIPT_DIR/extensions/planner-worker.ts" \
   "$PI_AGENT_DIR/extensions/planner-worker.ts"
 
+# Coder worker: the `coder-worker` tool (agent-invokable, gated by --tools)
+# + the `/implement "<prompt>"` command. Both spawn an implementation worker
+# (coder-run.sh) that WRITES THE REAL REPOSITORY (write/edit/bash, TDD). Unlike
+# the read-only workers it is NOT jailed — it must run in a writable, NON-research
+# session (ideally the container-harness) and refuses hard in research mode. Opt
+# the tool in with --tools ...,coder-worker.
+install_file \
+  "$SCRIPT_DIR/extensions/coder-worker.ts" \
+  "$PI_AGENT_DIR/extensions/coder-worker.ts"
+
 # Default role: light coordinator persona + situational tool guidance for bare
 # `pi` (defers to research mode / restricted sessions). Opt out: --no-default-role.
 install_file \
@@ -298,6 +310,14 @@ install_file \
   "$SCRIPT_DIR/scripts/bash/plan-jailed.sh" \
   "${SCRIPTS_DIR}/plan-jailed.sh"
 chmod +x "${SCRIPTS_DIR}/plan-jailed.sh"
+
+# Implementation worker that WRITES THE REAL REPO (write/edit/bash, TDD). NOT a
+# jail: it requires a writable, non-research session and fails hard in research
+# mode.
+install_file \
+  "$SCRIPT_DIR/scripts/bash/coder-run.sh" \
+  "${SCRIPTS_DIR}/coder-run.sh"
+chmod +x "${SCRIPTS_DIR}/coder-run.sh"
 
 install_file \
   "$SCRIPT_DIR/scripts/bash/adversary-scan.sh" \
@@ -653,6 +673,8 @@ echo ""
 echo "   /adversary-review          # self-review checklist (prompt command)"
 echo "   /adversary-pass <file>     # jailed adversary review of a file (add --quorum for peers)"
 echo "   /research \"<prompt>\"        # dispatch a jailed research worker to do a task"
+echo "   /plan \"<prompt>\"            # dispatch a jailed planner worker to produce a plan"
+echo "   /implement \"<prompt>\"       # dispatch a TDD coder worker that WRITES the real repo (writable/non-research session only)"
 echo "   /skill:adversary           # full adversary review"
 echo "   /skill:manager             # manager coordination session"
 echo "   /skill:orchestrator        # orchestrator session"
@@ -677,6 +699,7 @@ echo "   quorum.ts             (auto-quorum on CONCERNS/FAIL verdicts; peers run
 echo "   adversary-review.ts   (/adversary-pass <file> command; adversary-review tool when in --tools)"
 echo "   research-worker.ts    (/research \"<prompt>\" command; research-worker tool when in --tools)"
 echo "   planner-worker.ts     (/plan \"<prompt>\" command; planner-worker tool when in --tools)"
+echo "   coder-worker.ts       (/implement \"<prompt>\" command; coder-worker tool when in --tools — WRITES the real repo, writable/non-research session only)"
 echo "   qwen25coder-toolcall.ts (repairs Qwen2.5-Coder-32B leaked tool calls; no-op for other models)"
 echo ""
 echo " Research mode (read-only jail) — research-mode.ts, auto-discovered:"
