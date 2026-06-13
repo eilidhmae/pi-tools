@@ -25,11 +25,13 @@
 #   extensions/quorum.ts                       → extensions/quorum.ts  (adversary quorum)
 #   extensions/adversary-review.ts             → extensions/adversary-review.ts  (adversary-review tool + /adversary-pass)
 #   extensions/research-worker.ts              → extensions/research-worker.ts  (research-worker tool + /research)
+#   extensions/planner-worker.ts               → extensions/planner-worker.ts  (planner-worker tool + /plan)
 #   extensions/lib/*.ts                        → extensions/lib/*.ts  (helper modules)
 #   scripts/bash/adversary-check.sh              → scripts/adversary-check.sh
 #   scripts/bash/adversary-pass.sh               → scripts/adversary-pass.sh
 #   scripts/bash/adversary-jailed.sh             → scripts/adversary-jailed.sh
 #   scripts/bash/research-jailed.sh              → scripts/research-jailed.sh
+#   scripts/bash/plan-jailed.sh                  → scripts/plan-jailed.sh
 #   scripts/bash/adversary-scan.sh               → scripts/adversary-scan.sh
 #   scripts/bash/adversary-loop.sh               → scripts/adversary-loop.sh
 #   scripts/bash/capture-review.sh               → scripts/capture-review.sh
@@ -157,7 +159,7 @@ install_file "$SCRIPT_DIR/AGENTS.md" "$PI_AGENT_DIR/AGENTS.md"
 
 echo ""
 echo "=== Skills ==="
-for skill in adversary manager orchestrator worker research; do
+for skill in adversary manager orchestrator worker research plan; do
   install_file \
     "$SCRIPT_DIR/skills/${skill}/SKILL.md" \
     "$PI_AGENT_DIR/skills/${skill}/SKILL.md"
@@ -196,6 +198,14 @@ install_file \
 install_file \
   "$SCRIPT_DIR/extensions/research-worker.ts" \
   "$PI_AGENT_DIR/extensions/research-worker.ts"
+
+# Planner worker: the `planner-worker` tool (agent-invokable, gated by --tools)
+# + the `/plan "<prompt>"` command. Both spawn a jailed planner worker
+# (plan-jailed.sh) that writes its plan into the research workspace. Opt
+# the tool in with --tools ...,planner-worker.
+install_file \
+  "$SCRIPT_DIR/extensions/planner-worker.ts" \
+  "$PI_AGENT_DIR/extensions/planner-worker.ts"
 
 # Default role: light coordinator persona + situational tool guidance for bare
 # `pi` (defers to research mode / restricted sessions). Opt out: --no-default-role.
@@ -282,6 +292,12 @@ install_file \
   "$SCRIPT_DIR/scripts/bash/research-jailed.sh" \
   "${SCRIPTS_DIR}/research-jailed.sh"
 chmod +x "${SCRIPTS_DIR}/research-jailed.sh"
+
+# Tool-enabled planner worker inside the research-mode jail (read-only + bash-safe).
+install_file \
+  "$SCRIPT_DIR/scripts/bash/plan-jailed.sh" \
+  "${SCRIPTS_DIR}/plan-jailed.sh"
+chmod +x "${SCRIPTS_DIR}/plan-jailed.sh"
 
 install_file \
   "$SCRIPT_DIR/scripts/bash/adversary-scan.sh" \
@@ -660,6 +676,7 @@ echo "   adversary-hook.ts     (mechanical check after every write/edit)"
 echo "   quorum.ts             (auto-quorum on CONCERNS/FAIL verdicts; peers run jailed read-only)"
 echo "   adversary-review.ts   (/adversary-pass <file> command; adversary-review tool when in --tools)"
 echo "   research-worker.ts    (/research \"<prompt>\" command; research-worker tool when in --tools)"
+echo "   planner-worker.ts     (/plan \"<prompt>\" command; planner-worker tool when in --tools)"
 echo "   qwen25coder-toolcall.ts (repairs Qwen2.5-Coder-32B leaked tool calls; no-op for other models)"
 echo ""
 echo " Research mode (read-only jail) — research-mode.ts, auto-discovered:"
@@ -670,11 +687,11 @@ echo ""
 echo "   write-research and bash-safe MUST be in --tools — pi's allowlist drops"
 echo "   any tool not listed, and the extension cannot restore it at runtime."
 echo ""
-echo "   Add adversary-review / research-worker to let the agent self-invoke a jailed"
-echo "   reviewer or dispatch a jailed research worker:"
-echo "     pi --tools read,grep,find,ls,write-research,bash-safe,adversary-review,research-worker --research"
-echo "   (the /adversary-pass <file> and /research \"<prompt>\" commands are always"
-echo "    available regardless of --tools.)"
+echo "   Add adversary-review / research-worker / planner-worker to let the agent self-invoke a jailed"
+echo "   reviewer, dispatch a jailed research worker, or dispatch a jailed planner worker:"
+echo "     pi --tools read,grep,find,ls,write-research,bash-safe,adversary-review,research-worker,planner-worker --research"
+echo "   (the /adversary-pass <file>, /research \"<prompt>\", and /plan \"<prompt>\" commands"
+echo "    are always available regardless of --tools.)"
 echo ""
 echo "   /research-mode also works without --tools (it deactivates write/edit/bash"
 echo "   itself and warns), and one-shot/print runs can auto-activate with --research:"
