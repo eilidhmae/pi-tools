@@ -140,16 +140,43 @@ PLAN=$(run_pi "$FULL_PROMPT") || true
 echo "$PLAN"
 echo ""
 
-{
-  echo "# Implementation Plan (jailed, tool-enabled)"
-  echo ""
-  echo "**Task**: ${PROMPT}"
-  echo "**Timestamp**: ${TIMESTAMP}"
-  echo "**Model**: ${PROVIDER}/${MODEL}"
-  echo "**Mode**: research-mode jail (read,grep,find,ls,bash-safe,write-research)"
-  echo ""
-  echo "$PLAN"
-} > "$PLAN_FILE"
+# --- Verify, then write. The runner owns only the cheap deterministic part:
+#     confirm the worker produced something, and that the plan file lands with
+#     exactly the intended bytes (our own SHA-256). It retries the WRITE only,
+#     never the worker; a no-output or persistent-write failure escalates to the
+#     session agent instead of emitting a phantom "Plan written to". -----------
+AV_LIB="${HOME}/.pi/agent/scripts/artifact-verify.sh"
+[[ -f "$AV_LIB" ]] || AV_LIB="$SCRIPT_DIR/artifact-verify.sh"
+# shellcheck source=/dev/null
+source "$AV_LIB"
 
-echo "Plan written to: ${PLAN_FILE}"
-exit 0
+if ! av_substantive "$PLAN"; then
+  echo "WORKER-FAILED: planner worker produced no usable output — escalate to the session agent (re-run or adjust the task)." >&2
+  echo "WORKER-FAILED: no usable output."
+  exit 3
+fi
+
+CONTENT="$(
+  printf '# Implementation Plan (jailed, tool-enabled)\n\n'
+  printf '**Task**: %s\n' "$PROMPT"
+  printf '**Timestamp**: %s\n' "$TIMESTAMP"
+  printf '**Model**: %s/%s\n' "$PROVIDER" "$MODEL"
+  printf '**Mode**: research-mode jail (read,grep,find,ls,bash-safe,write-research)\n\n'
+  printf '%s\n' "$PLAN"
+)"
+
+set +e
+WANT="$(av_write_verified "$CONTENT" "$PLAN_FILE")"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then
+  echo "Plan written to: ${PLAN_FILE}  (sha256=${WANT}, verified)"
+  exit 0
+fi
+if [[ "$rc" -eq 2 ]]; then
+  echo "WORKER-FAILED: could not run checksum verification (tool unavailable) — escalate to the session agent." >&2
+else
+  echo "WORKER-FAILED: plan file did not verify after retry — escalate to the session agent." >&2
+fi
+echo "WORKER-FAILED: write unverified."
+exit 4

@@ -358,6 +358,19 @@ install_file \
   "${SCRIPTS_DIR}/plan-jailed.sh"
 chmod +x "${SCRIPTS_DIR}/plan-jailed.sh"
 
+# checksum.sh: bash front-end to the checksum CLI (our own SHA-256). artifact-
+# verify.sh: shared write-verification helpers sourced by the jailed runners so a
+# worker's report/plan is checksum-verified to have landed exactly (else escalate).
+install_file \
+  "$SCRIPT_DIR/scripts/bash/checksum.sh" \
+  "${SCRIPTS_DIR}/checksum.sh"
+chmod +x "${SCRIPTS_DIR}/checksum.sh"
+
+install_file \
+  "$SCRIPT_DIR/scripts/bash/artifact-verify.sh" \
+  "${SCRIPTS_DIR}/artifact-verify.sh"
+chmod +x "${SCRIPTS_DIR}/artifact-verify.sh"
+
 # Implementation worker that WRITES THE REAL REPO (write/edit/bash, TDD). NOT a
 # jail: it requires a writable, non-research session and fails hard in research
 # mode.
