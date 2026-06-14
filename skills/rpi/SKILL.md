@@ -41,6 +41,20 @@ stop — you cannot drive the chain without them.
    (e.g. "target: macOS/arm64 host; the chain itself runs in a Linux guest").
    This is what stops the sandbox OS from leaking into the artifact (e.g. a
    `/proc`-only script shipped to a macOS box).
+8. **Verify every worker claim against reality — never act on an unchecked
+   report.** A worker's output is a *claim*, not a fact: that it wrote a file,
+   where, and what it contains. Check before you build on it. The load-bearing
+   instance: when a worker reports an artifact path (e.g. "Report: reports/…md"),
+   **confirm the file actually exists at that path and holds the claimed content**
+   (`ls`/`read` it) BEFORE you gate it or advance — a worker can report a path
+   while carrying the content only in the text it returned, never durably writing
+   the file. If the artifact is missing or wrong, the stage failed silently:
+   **re-dispatch that worker.** Never gate a phantom file (the gate FAILs on a
+   missing target) and never pass content onward from your own context as if it
+   had landed — the next stage and the gate must read the real file, not your
+   recollection. (Directive 5, verifying each adversary concern, is this same
+   principle applied to the gate; directive 8 is the general rule for all worker
+   output.)
 
 ## The chain
 
