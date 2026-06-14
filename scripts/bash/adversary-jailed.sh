@@ -63,7 +63,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- Model / provider (mirror adversary-pass.sh) ---
-if [[ "$(uname -m)" == "arm64" ]]; then
+# macOS reports arm64; the Linux container-harness guest reports aarch64. Both
+# reach the host MLX on :18080 (forwarded via socat inside the container), so
+# both take the local-mlx path — only a genuinely other arch (x86) → ollama.
+if [[ "$(uname -m)" == "arm64" || "$(uname -m)" == "aarch64" ]]; then
   MODEL="${PI_ADVERSARY_MODEL:-$HOME/models/Qwen3.5-27B-4bit}"
   PROVIDER="local-mlx"
   if ! curl -fs --max-time 3 http://localhost:18080/v1/models >/dev/null 2>&1; then

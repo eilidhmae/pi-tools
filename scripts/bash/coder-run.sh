@@ -71,9 +71,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- Tier select (Apple-Silicon only; no non-arm64 fallback on either tier) ---
-if [[ "$(uname -m)" != "arm64" ]]; then
-  echo "ERROR: coder-run.sh requires Apple Silicon (arm64) — the Code Worker" >&2
-  echo "       backends are served only on this host. No non-arm64 fallback." >&2
+# macOS reports arm64; the Linux container-harness guest reports aarch64 and
+# reaches the host MLX backends via socat-forwarded ports. Accept both; only a
+# genuinely other arch (x86) lacks a Code Worker backend.
+if [[ "$(uname -m)" != "arm64" && "$(uname -m)" != "aarch64" ]]; then
+  echo "ERROR: coder-run.sh requires Apple Silicon (arm64) or a Linux/aarch64" >&2
+  echo "       container-harness guest forwarding to the host — the Code Worker" >&2
+  echo "       backends are served only there." >&2
   exit 2
 fi
 CODER_TIER="${PI_CODER_TIER:-large}"

@@ -77,7 +77,8 @@ QUORUM=0
 # adapters this harness was built on, and emits no thinking trace.
 # On non-Apple platforms the legacy ollama path still applies.
 # --provider / --model / --adapter / --domain flags override this.
-if [[ "$(uname -m)" == "arm64" ]]; then
+# arm64 (macOS) or aarch64 (Linux container-harness guest → host MLX) → local-mlx.
+if [[ "$(uname -m)" == "arm64" || "$(uname -m)" == "aarch64" ]]; then
   MODEL="${PI_ADVERSARY_MODEL:-$HOME/models/Qwen3.5-27B-4bit}"
   PROVIDER="local-mlx"
   if ! curl -fs --max-time 3 http://localhost:18080/v1/models >/dev/null 2>&1; then
