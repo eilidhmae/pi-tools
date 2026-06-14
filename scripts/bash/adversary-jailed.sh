@@ -45,10 +45,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 TARGET="${1:?Usage: adversary-jailed.sh <path> [--quorum] [--out-dir <dir>]}"
-if [[ ! -e "$TARGET" ]]; then
-  echo "ERROR: target '$TARGET' does not exist." >&2
-  exit 1
-fi
 shift
 
 QUORUM=0
@@ -103,6 +99,35 @@ REVIEW_DIR="${REVIEW_DIR_OVERRIDE:-${PI_RESEARCH_WORKSPACE:+$PI_RESEARCH_WORKSPA
 REVIEW_DIR="${REVIEW_DIR:-reviews}"
 REVIEW_FILE="${REVIEW_DIR}/${TARGET_LABEL}-jailed-${TIMESTAMP}.md"
 mkdir -p "$REVIEW_DIR"
+
+# --- Fail closed if the named target is not present ---
+# A gate told to review a file it cannot find must FAIL (block the chain), not
+# return an ambiguous UNKNOWN or a silent pass. This catches a not-yet-published
+# artifact (a publish/visibility race with the prior stage) as well as a wrong
+# path. Checked here, after REVIEW_DIR is known, so the verdict is recorded like
+# any other review.
+if [[ ! -e "$TARGET" ]]; then
+  {
+    echo "# Adversary Review (jailed, tool-enabled)"
+    echo ""
+    echo "**Target**: \`${TARGET}\`"
+    echo "**Timestamp**: ${TIMESTAMP}"
+    echo "**Mode**: research-mode jail (read,grep,find,ls,bash-safe,write-research)"
+    echo ""
+    echo "**VERDICT: FAIL** — review target not found."
+    echo ""
+    echo "The target \`${TARGET}\` does not exist where the reviewer runs. The gate"
+    echo "cannot evaluate a file it was told exists, so it fails closed (FAIL) rather"
+    echo "than returning UNKNOWN. Likely causes: a wrong path, or the prior stage's"
+    echo "artifact was not durably published before this gate ran (a race)."
+    echo ""
+    echo "verdict: FAIL"
+  } > "$REVIEW_FILE"
+  echo "ERROR: review target '${TARGET}' not found — failing closed (FAIL)." >&2
+  echo "Verdict: FAIL"
+  echo "Review written to: ${REVIEW_FILE}"
+  exit 0
+fi
 
 # --- Step 0 baseline: run the script here; the jailed model cannot ---
 # adversary-check.sh sits beside this script in both layouts (repo
@@ -174,7 +199,21 @@ if [[ -z "$VERDICT" ]]; then
   VERDICT=$(echo "$REVIEW" | grep -E '\*\*VERDICT:|\*\*PASS\*\*|\*\*CONCERNS\*\*|\*\*FAIL\*\*' \
               | head -1 | grep -oE 'PASS|CONCERNS|FAIL' | head -1 || true)
 fi
-[[ -z "$VERDICT" ]] && VERDICT="UNKNOWN"
+# Fail closed: an adversary that produced no parseable verdict could not
+# complete the review (empty/incomplete body — e.g. it couldn't read the target,
+# or exhausted its token budget). A gate that cannot evaluate must BLOCK, not
+# return an ambiguous UNKNOWN that risks being waved past.
+if [[ -z "$VERDICT" ]]; then
+  VERDICT="FAIL"
+  {
+    echo ""
+    echo "> **Gate fail-closed:** the adversary produced no parseable verdict"
+    echo "> (empty or incomplete review — could not read the target, or ran out of"
+    echo "> token budget). Treated as FAIL so the chain blocks rather than proceeding"
+    echo "> on an unreviewed artifact. Re-run; if it recurs, check the target is"
+    echo "> readable and small enough for the reviewer."
+  } >> "$REVIEW_FILE"
+fi
 
 # --- Quorum: jailed peer adversaries, only on CONCERNS/FAIL (mirror adversary-pass.sh stage 2) ---
 if [[ "$QUORUM" -eq 1 ]] && [[ "$VERDICT" == "CONCERNS" || "$VERDICT" == "FAIL" ]]; then
