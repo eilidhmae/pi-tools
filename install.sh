@@ -11,6 +11,8 @@
 # Options:
 #   --local, --project   Install into ./.pi/agent/ instead of ~/.pi/agent/
 #   --force, -y          Skip overwrite prompts
+#   --small, --tier-small  Force the small memory tier (27B serves all roles)
+#   --large, --tier-large  Force the large memory tier (27B + 32B Code Worker)
 #   --help, -h           Show this help
 #
 # Components installed (source path → install path under $PI_AGENT_DIR,
@@ -51,18 +53,29 @@ set -euo pipefail
 
 TARGET_MODE="global"
 FORCE=0
+# Forced memory tier: empty = autodetect (default); "small"/"large" override the
+# detection + PI_FORCE_MEM_GB logic below. An explicit flag wins over both.
+FORCE_TIER=""
 
 for arg in "$@"; do
   case "$arg" in
-    --local|--project) TARGET_MODE="local" ;;
-    --force|-y|--yes)  FORCE=1 ;;
+    --local|--project)      TARGET_MODE="local" ;;
+    --force|-y|--yes)       FORCE=1 ;;
+    --small|--tier-small)
+      [[ -n "$FORCE_TIER" && "$FORCE_TIER" != "small" ]] && \
+        { echo "ERROR: --small and --large are mutually exclusive" >&2; exit 1; }
+      FORCE_TIER="small" ;;
+    --large|--tier-large)
+      [[ -n "$FORCE_TIER" && "$FORCE_TIER" != "large" ]] && \
+        { echo "ERROR: --small and --large are mutually exclusive" >&2; exit 1; }
+      FORCE_TIER="large" ;;
     --help|-h)
-      sed -n '2,30p' "$0"
+      sed -n '2,32p' "$0"
       exit 0
       ;;
     *)
       echo "ERROR: Unknown argument: $arg" >&2
-      echo "Usage: install.sh [--local] [--force]" >&2
+      echo "Usage: install.sh [--local] [--force] [--small|--large]" >&2
       exit 1
       ;;
   esac
@@ -141,7 +154,14 @@ if provider not in template.get("providers", {}):
 if provider in target["providers"]:
     print(f"  Already present: {provider} (no change)")
     sys.exit(0)
-target["providers"][provider] = template["providers"][provider]
+# Expand $HOME the same way the fresh-install path does (sed s|$HOME|...|), so a
+# provider whose model id is a local path (e.g. the 27B at $HOME/models/...) is
+# merged with a real path rather than a literal "$HOME".
+import os
+_home = os.environ.get("HOME", "")
+target["providers"][provider] = json.loads(
+    json.dumps(template["providers"][provider]).replace("$HOME", _home)
+)
 backup = f"{target_path}.bak.{int(time.time())}"
 shutil.copy2(target_path, backup)
 with open(target_path, "w") as f:
@@ -161,7 +181,7 @@ install_file "$SCRIPT_DIR/AGENTS.md" "$PI_AGENT_DIR/AGENTS.md"
 
 echo ""
 echo "=== Skills ==="
-for skill in adversary manager orchestrator worker research plan; do
+for skill in adversary manager orchestrator worker research plan rpi; do
   install_file \
     "$SCRIPT_DIR/skills/${skill}/SKILL.md" \
     "$PI_AGENT_DIR/skills/${skill}/SKILL.md"
@@ -416,7 +436,14 @@ else
   MEM_TIER="small"
 fi
 echo ""
-echo "=== Memory tier: ${MEM_TIER} (detected ${MEM_GB} GB unified) ==="
+# An explicit --small/--large flag wins over detection AND PI_FORCE_MEM_GB:
+# override the decided tier here so the role-map logic below is untouched.
+if [[ -n "$FORCE_TIER" ]]; then
+  MEM_TIER="$FORCE_TIER"
+  echo "=== Memory tier: ${MEM_TIER} (forced via --${FORCE_TIER}; detected ${MEM_GB} GB unified) ==="
+else
+  echo "=== Memory tier: ${MEM_TIER} (detected ${MEM_GB} GB unified) ==="
+fi
 
 # local-mlx baseUrls below use 127.0.0.1 instead of localhost on purpose.
 # On macOS /etc/hosts maps localhost to both 127.0.0.1 and ::1; mlx_lm.server
@@ -532,24 +559,32 @@ PYEOF
   esac
 fi
 
-# --- Provision the 32B Code-Worker provider on the LARGE tier only ---
-# Independent of the local-mlx merge above (which only fires when local-mlx
-# is ABSENT). On a 128GB-class box the 27B reasoning track and the 35GB
-# Qwen2.5-Coder-32B Code Worker co-reside, so we ensure the
-# local-mlx-qwen25coder32b provider is present. Additive + idempotent:
-# re-running adds nothing and churns no backups. On the small tier we add
-# nothing and remove nothing (the worker can't co-reside with the 27B).
-if [[ "$IS_ARM64" -eq 1 ]] && [[ "$MEM_TIER" == "large" ]] && [[ -f "$MODELS_JSON" ]] && [[ -f "$TEMPLATE" ]]; then
+# --- Provision the Code-Worker providers ---
+# Additive + idempotent (re-running adds nothing, churns no backups). Two views:
+#   local-mlx-coder27b  — the 27B Code-Worker view (→ :18080, same weights as
+#     local-mlx, flagged thinking-controllable). It serves the Coder on the SMALL
+#     tier, and is also provisioned on LARGE so a 128GB box can exercise the small
+#     path via PI_CODER_TIER=small. Always available on arm64 (the 27B is up).
+#   local-mlx-qwen25coder32b — the 35GB dense 32B Coder, LARGE tier only (it
+#     can't co-reside with the resident 27B on a <112GB box).
+if [[ "$IS_ARM64" -eq 1 ]] && [[ -f "$MODELS_JSON" ]] && [[ -f "$TEMPLATE" ]]; then
   echo ""
-  echo "=== Code Worker (large tier): ensuring local-mlx-qwen25coder32b in $MODELS_JSON ==="
+  echo "=== Code Worker (27B view): ensuring local-mlx-coder27b in $MODELS_JSON ==="
   rc=0
-  merge_provider "$MODELS_JSON" "$TEMPLATE" "local-mlx-qwen25coder32b" || rc=$?
+  merge_provider "$MODELS_JSON" "$TEMPLATE" "local-mlx-coder27b" || rc=$?
   if [[ "$rc" -ne 0 ]]; then
-    echo "  WARNING: 32B provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
+    echo "  WARNING: coder27b provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
   fi
-elif [[ "$IS_ARM64" -eq 1 ]] && [[ "$MEM_TIER" == "small" ]]; then
-  echo ""
-  echo "=== Code Worker: skipped (small tier — 27B serves all roles) ==="
+  if [[ "$MEM_TIER" == "large" ]]; then
+    echo "=== Code Worker (large tier): ensuring local-mlx-qwen25coder32b in $MODELS_JSON ==="
+    rc=0
+    merge_provider "$MODELS_JSON" "$TEMPLATE" "local-mlx-qwen25coder32b" || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+      echo "  WARNING: 32B provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
+    fi
+  else
+    echo "=== Code Worker: 32B skipped (small tier — 27B serves the Coder via local-mlx-coder27b) ==="
+  fi
 fi
 
 # --- Apple Silicon default provider/model ---
@@ -680,6 +715,7 @@ echo "   /skill:manager             # manager coordination session"
 echo "   /skill:orchestrator        # orchestrator session"
 echo "   /skill:worker              # worker implementation session"
 echo "   /skill:research            # research and analysis (use with research-mode extension)"
+echo "   /skill:rpi                 # RPI coordinator: drive research→plan→implement, adversary-gated"
 echo ""
 echo "   ${SCRIPTS_DIR}/adversary-pass.sh <file>          # headless adversary pipeline"
 echo "   ${SCRIPTS_DIR}/adversary-pass.sh <file> --quorum # with manual quorum"
