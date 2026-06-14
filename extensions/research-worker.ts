@@ -203,6 +203,8 @@ export default function (pi: any) {
       "Use research-worker to delegate a scoped, self-contained investigation (e.g. 'summarize what each script in scripts/bash does'). The worker is read-only — it cannot change the repo.",
       "Give a complete, self-contained prompt; the worker carries no other context.",
       "Pass an optional label to name the report file; otherwise it is named 'research-<timestamp>.md'.",
+      "RPI chain stage 1 of 3 (Research → Plan → Implement). When asked to 'use the RPI tools' to make a change, START here: dispatch research, then gate the report with adversary-review, verify any concern yourself before acting on it, then pass the report path to planner-worker. Run the stages in order and never skip a gate. (For the full protocol, /skill:rpi.)",
+      "Pacing: by default carry the chain through all stages, surfacing a short running summary. If the user asks to go step by step or 'check in after each step', treat each stage (a worker run plus its adversary gate) as one step: dispatch only that step, report its result and the artifact path, and WAIT for the user's go-ahead before the next.",
     ],
     parameters: {
       type: "object",
