@@ -13,11 +13,20 @@
 #   - NO --research (research mode is read-only; there is no writable session
 #     path there). This script FAILS HARD if invoked from a research-mode
 #     session — see the guard below.
-#   - only the qwen25coder-toolcall extension is loaded (-e). That is the crux:
-#     the 32B dense coder emits tool calls in a wrapper the backend parser drops,
-#     so without this extension its tool calls never dispatch and it cannot act
-#     as an agentic worker at all. Loading only that one extension also keeps the
+#
+# Two memory tiers, selected at RUNTIME by PI_CODER_TIER (no reinstall needed):
+#
+#   large (default): the 32B dense coder on :18111. Only the
+#     qwen25coder-toolcall extension is loaded (-e). That is the crux on this
+#     tier: the 32B emits tool calls in a wrapper the backend parser drops, so
+#     without this extension its tool calls never dispatch and it cannot act as
+#     an agentic worker at all. Loading only that one extension also keeps the
 #     turn lean (no quorum/adversary-hook).
+#   small: the 27B reasoning model on :18080 serves the Coder too (the 35GB 32B
+#     can't co-reside with the resident 27B on a <112GB box). The 27B's tool
+#     calls dispatch natively, so the toolcall-repair extension is NOT loaded
+#     (it is a strict no-op for non-32B models anyway) — this branch runs pi
+#     with no -e at all.
 #
 # The worker's system prompt is the `worker` skill (TDD: write a failing test,
 # implement, run the test, report the evidence).
@@ -61,26 +70,58 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-# --- Model / provider (Apple-Silicon / 32B only; no fallback) ---
-# The provider/model ids are load-bearing: the toolcall-repair extension only
-# fires when the model id equals its TARGET_MODEL_ID, so these must match
-# exactly.
+# --- Tier select (Apple-Silicon only; no non-arm64 fallback on either tier) ---
 if [[ "$(uname -m)" != "arm64" ]]; then
-  echo "ERROR: coder-run.sh requires Apple Silicon (arm64) — the 32B Code Worker" >&2
-  echo "       is served only on this host. No non-arm64 fallback." >&2
+  echo "ERROR: coder-run.sh requires Apple Silicon (arm64) — the Code Worker" >&2
+  echo "       backends are served only on this host. No non-arm64 fallback." >&2
   exit 2
 fi
-PROVIDER="local-mlx-qwen25coder32b"
-# Pinned, NOT overridable: the toolcall-repair extension fires only when the
-# model id equals its TARGET_MODEL_ID byte-for-byte. Any other value silently
-# disables the repair (tool calls leak as text, the worker stalls with no
-# diagnostic), and there is no other model on :18111 — so there is no safe
-# non-default value. Repointing requires editing this id AND the extension's
-# TARGET_MODEL_ID together.
-MODEL="mlx-community/Qwen2.5-Coder-32B-Instruct-8bit"
-if ! curl -fs --max-time 3 http://localhost:18111/v1/models >/dev/null 2>&1; then
-  echo "ERROR: backend http://localhost:18111 unreachable. Bring it up:" >&2
-  echo "         bash <pi-tools>/server/mlx-server.sh up"                 >&2
+CODER_TIER="${PI_CODER_TIER:-large}"
+# Thinking level for the small/27B Coder path only (pi levels: off|minimal|low|
+# medium|high|xhigh). Default OFF: the RPI Implementor is an executor — the
+# deliberation is front-loaded into the (thinking) Planner — and thinking-off
+# also avoids the 27B's single-shot <think> runaway. This is a measuring knob
+# for whether thinking helps the coder hat; it ONLY touches the coder's own
+# local-mlx-coder27b provider view, never the adversary/researcher/planner.
+CODER_THINKING="${PI_CODER_THINKING:-off}"
+
+case "$CODER_TIER" in
+  large)
+    # --- 32B dense coder on :18111 ---
+    # The provider/model ids are load-bearing: the toolcall-repair extension only
+    # fires when the model id equals its TARGET_MODEL_ID, so these must match
+    # exactly.
+    PROVIDER="local-mlx-qwen25coder32b"
+    # Pinned, NOT overridable: the toolcall-repair extension fires only when the
+    # model id equals its TARGET_MODEL_ID byte-for-byte. Any other value silently
+    # disables the repair (tool calls leak as text, the worker stalls with no
+    # diagnostic), and there is no other model on :18111 — so there is no safe
+    # non-default value. Repointing requires editing this id AND the extension's
+    # TARGET_MODEL_ID together.
+    MODEL="mlx-community/Qwen2.5-Coder-32B-Instruct-8bit"
+    CODER_PORT=18111
+    ;;
+  small)
+    # --- 27B reasoning model on :18080 (serves the Coder on <112GB boxes) ---
+    # The 27B's tool calls dispatch natively, so no toolcall-repair extension is
+    # loaded on this path (see run_pi below). local-mlx-coder27b is the Coder's
+    # OWN view of the same :18080 backend/weights as local-mlx, but flagged
+    # thinking-controllable (reasoning + qwen-chat-template) — so toggling
+    # thinking here never affects the adversary/researcher/planner, which use the
+    # unchanged local-mlx provider (no kwarg sent → always thinking).
+    PROVIDER="local-mlx-coder27b"
+    MODEL="${HOME}/models/Qwen3.5-27B-4bit"
+    CODER_PORT=18080
+    ;;
+  *)
+    echo "ERROR: PI_CODER_TIER must be 'large' or 'small' (got '${CODER_TIER}')." >&2
+    exit 2
+    ;;
+esac
+
+if ! curl -fs --max-time 3 "http://localhost:${CODER_PORT}/v1/models" >/dev/null 2>&1; then
+  echo "ERROR: backend http://localhost:${CODER_PORT} unreachable. Bring it up:" >&2
+  echo "         bash <pi-tools>/server/mlx-server.sh up"                         >&2
   exit 2
 fi
 
@@ -92,13 +133,16 @@ if [[ ! -f "$WORKER_SKILL" ]]; then
   exit 1
 fi
 
-# --- Resolve the toolcall-repair extension (the crux: makes the 32B dispatch) ---
-TOOLCALL_EXT="${HOME}/.pi/agent/extensions/qwen25coder-toolcall.ts"
-[[ -f "$TOOLCALL_EXT" ]] || TOOLCALL_EXT="extensions/qwen25coder-toolcall.ts"
-if [[ ! -f "$TOOLCALL_EXT" ]]; then
-  echo "ERROR: qwen25coder-toolcall.ts not found (run install.sh). Without it the" >&2
-  echo "       32B's tool calls never dispatch and it cannot implement." >&2
-  exit 1
+# --- Resolve the toolcall-repair extension (LARGE tier only: makes the 32B
+# dispatch). The small/27B tier dispatches natively and loads no extension. ---
+if [[ "$CODER_TIER" == "large" ]]; then
+  TOOLCALL_EXT="${HOME}/.pi/agent/extensions/qwen25coder-toolcall.ts"
+  [[ -f "$TOOLCALL_EXT" ]] || TOOLCALL_EXT="extensions/qwen25coder-toolcall.ts"
+  if [[ ! -f "$TOOLCALL_EXT" ]]; then
+    echo "ERROR: qwen25coder-toolcall.ts not found (run install.sh). Without it the" >&2
+    echo "       32B's tool calls never dispatch and it cannot implement." >&2
+    exit 1
+  fi
 fi
 
 # LABEL is informational here (no artifact named after it); keep it sanitized
@@ -126,22 +170,40 @@ Task:
 ${PROMPT}
 EOF
 
-# NOT --research; full implement tools; only the toolcall-repair extension. The
-# child writes the real working tree.
+# NOT --research; full implement tools. The child writes the real working tree.
+# Large tier loads only the toolcall-repair extension; the small/27B tier loads
+# none (it dispatches natively). Everything else is identical across tiers.
 run_pi() {
   local prompt="$1"
-  pi \
-    --no-extensions \
-    -e "$TOOLCALL_EXT" \
-    --no-skills \
-    --no-prompt-templates \
-    --no-context-files \
-    --no-session \
-    --tools read,grep,find,ls,write,edit,bash \
-    --provider "$PROVIDER" \
-    --model "$MODEL" \
-    --system-prompt "$(cat "$WORKER_SKILL")" \
-    -p "$prompt" 2>&1
+  if [[ "$CODER_TIER" == "large" ]]; then
+    pi \
+      --no-extensions \
+      -e "$TOOLCALL_EXT" \
+      --no-skills \
+      --no-prompt-templates \
+      --no-context-files \
+      --no-session \
+      --tools read,grep,find,ls,write,edit,bash \
+      --provider "$PROVIDER" \
+      --model "$MODEL" \
+      --system-prompt "$(cat "$WORKER_SKILL")" \
+      -p "$prompt" 2>&1
+  else
+    # 27B path: thinking is controllable via PI_CODER_THINKING (scoped to the
+    # local-mlx-coder27b provider). Default off (executor). No toolcall ext.
+    pi \
+      --no-extensions \
+      --no-skills \
+      --no-prompt-templates \
+      --no-context-files \
+      --no-session \
+      --thinking "$CODER_THINKING" \
+      --tools read,grep,find,ls,write,edit,bash \
+      --provider "$PROVIDER" \
+      --model "$MODEL" \
+      --system-prompt "$(cat "$WORKER_SKILL")" \
+      -p "$prompt" 2>&1
+  fi
 }
 
 OUTPUT=$(run_pi "$FULL_PROMPT") || true
