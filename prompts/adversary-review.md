@@ -79,6 +79,13 @@ List them explicitly:
 - About external service availability
 - About what the user actually wanted
 
+**Blocking:** if you assumed a runtime environment the deployment target does
+not provide, that is a defect — not a documented assumption. You may have built
+and tested inside a sandbox whose OS differs from where this ships (e.g. a Linux
+container vs a macOS host), so an assumption that holds where you ran can still
+be wrong where it deploys: `/proc` on macOS/BSD, GNU-only flags, `.so` vs
+`.dylib`. Judge against the target, not your own `uname`, and flag the mismatch.
+
 ### 6. Is there a simpler way?
 
 Describe at least one simpler alternative to your approach. Be honest about

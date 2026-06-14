@@ -214,6 +214,7 @@ export default function (pi: any) {
       "Like the other workers it is gated by --tools: it is only available when 'coder-worker' is in --tools. It refuses in research mode and inside a dispatched child (recursion guard).",
       "Pass an optional label to tag the run; there is no plan/report file — review the returned git diff/status summary.",
       "RPI chain stage 3 of 3 (Implement). Run after the Plan is done and gated: give the worker the plan-file path, then gate the resulting diff with adversary-review and fix only confirmed concerns (re-gate until clean). Needs a writable non-research session; on <112GB boxes export PI_CODER_TIER=small so the Coder uses the 27B on :18080 instead of the absent 32B on :18111. Honor step-by-step / check-in pacing.",
+      "State the deployment-target OS/arch in the implement prompt. The Coder writes inside its session (often a Linux container) but the artifact may run on the macOS host — it must target the destination, not its own runtime: portable paths, no /proc on a macOS target, no GNU-only flags on BSD. If the plan hard-codes a sandbox-specific dependency, fix it to the target.",
     ],
     parameters: {
       type: "object",

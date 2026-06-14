@@ -213,6 +213,7 @@ export default function (pi: any) {
       "The reviewed file may be a workspace path (your research doc) or a repo path; the review is written under <workspace>/reviews/ in research mode, else ./reviews.",
       "Pass quorum=true for higher-stakes reviews; leave it off for a quick single pass.",
       "RPI gate: run after each chain stage (the research report, the plan, then the implementation diff) on that stage's artifact. Before spending a worker to fix a flagged concern, verify it against the actual files yourself — don't burn a dispatch on a false positive.",
+      "Pass the deployment-target OS/arch in the review prompt. The reviewer runs jailed in whatever session you launched it from (possibly a Linux container), so an environment assumption that holds where it runs can still be wrong where the artifact deploys — tell it the target so 'assumes an OS the target lacks' (e.g. /proc on macOS, GNU-only flags on BSD) is treated as a blocking defect, not a documented assumption.",
     ],
     parameters: {
       type: "object",
