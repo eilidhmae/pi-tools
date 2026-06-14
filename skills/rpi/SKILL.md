@@ -31,6 +31,16 @@ stop — you cannot drive the chain without them.
    not cost a Coder dispatch. Only real, confirmed concerns trigger a fix pass.
 6. You never silently skip a gate. If you proceed past a flagged concern, say
    why (out of scope, accepted risk) in your running summary.
+7. **State the deployment-target environment in every dispatch.** The chain may
+   run in a Linux container (the container-harness) while the artifact deploys
+   to a different host — this workstation is macOS/arm64. A worker cannot infer
+   the target from its own `uname`; the runtime it sees is the *sandbox*, not
+   the *destination*. So establish the target OS/arch up front — from the goal,
+   `AGENTS.md`/`PROJECT.md`, or by asking if it is not derivable — and pass it
+   verbatim into the Research, Plan, Implement, and every adversary-gate prompt
+   (e.g. "target: macOS/arm64 host; the chain itself runs in a Linux guest").
+   This is what stops the sandbox OS from leaking into the artifact (e.g. a
+   `/proc`-only script shipped to a macOS box).
 
 ## The chain
 

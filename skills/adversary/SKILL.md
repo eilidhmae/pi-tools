@@ -199,6 +199,19 @@ List every implicit assumption the code makes about:
 
 Challenge each one: is it documented? What happens if it's wrong?
 
+**Deployment-target check (blocking).** If the prompt states a deployment
+target (OS/arch) — or the change clearly ships to one — any assumption the
+target does **not** satisfy is a **defect, not a documented assumption**. Flag
+it CONCERNS or FAIL with the `file:line`. You may be reviewing inside a sandbox
+whose OS differs from the target (e.g. a Linux container while the artifact runs
+on a macOS host), so an assumption that holds *where you are running* can still
+be wrong *where it deploys* — judge against the stated target, not your own
+`uname`. Examples: reading `/proc/*` when the target is macOS/BSD; GNU-only
+flags (`date -d`, `sed -i ''` vs `sed -i`) on a BSD target; `.so` vs `.dylib`;
+hard-coded path separators. Half-portability is a tell — if the code already
+guards one platform divergence (e.g. a BSD `date` fallback) but hard-depends on
+a Linux-only data source, that inconsistency is the bug.
+
 ### Step 8: Security Scan
 
 Quick pass for:

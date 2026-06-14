@@ -204,6 +204,7 @@ export default function (pi: any) {
       "Give a complete, self-contained prompt; the worker carries no other context.",
       "Pass an optional label to name the report file; otherwise it is named 'research-<timestamp>.md'.",
       "RPI chain stage 1 of 3 (Research → Plan → Implement). When asked to 'use the RPI tools' to make a change, START here: dispatch research, then gate the report with adversary-review, verify any concern yourself before acting on it, then pass the report path to planner-worker. Run the stages in order and never skip a gate. (For the full protocol, /skill:rpi.)",
+      "State the deployment-target OS/arch (this workstation is macOS/arm64) in every dispatch and gate. The chain may run inside a Linux container while the artifact deploys to the macOS host, and a worker cannot infer the target from its own runtime — so establish it up front (goal / AGENTS.md, or ask) and pass it verbatim downstream. This stops the sandbox OS from leaking into the artifact (e.g. a /proc-only script shipped to macOS).",
       "Pacing: by default carry the chain through all stages, surfacing a short running summary. If the user asks to go step by step or 'check in after each step', treat each stage (a worker run plus its adversary gate) as one step: dispatch only that step, report its result and the artifact path, and WAIT for the user's go-ahead before the next.",
     ],
     parameters: {
