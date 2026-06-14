@@ -42,7 +42,8 @@ REVISE=0
 # Bring the MLX stack up with server/mlx-server.sh up. On non-Apple
 # platforms the legacy ollama default applies.
 # --provider / --model / --domain flags override this.
-if [[ "$(uname -m)" == "arm64" ]]; then
+# arm64 (macOS) or aarch64 (Linux container-harness guest → host MLX) → local-mlx.
+if [[ "$(uname -m)" == "arm64" || "$(uname -m)" == "aarch64" ]]; then
   MODEL="qwen3-coder-30b-a3b"
   PROVIDER="local-mlx"
 else
