@@ -274,6 +274,13 @@ install_file \
   "$SCRIPT_DIR/extensions/xml-function-toolcall.ts" \
   "$PI_AGENT_DIR/extensions/xml-function-toolcall.ts"
 
+# checksum tool: SHA-256 of a file/value, or verify a file matches intended
+# content — so a worker/runner can prove a write landed exactly (no system hash
+# binary; works in the research jail). Built on extensions/lib/sha256.ts.
+install_file \
+  "$SCRIPT_DIR/extensions/checksum.ts" \
+  "$PI_AGENT_DIR/extensions/checksum.ts"
+
 # Research mode extension (read-only jail with isolated write workspace).
 # Single self-contained extension: provides write-research + bash-safe tools,
 # the /research-mode command, system-prompt injection, and tool enforcement.
@@ -306,6 +313,15 @@ install_file \
 install_file \
   "$SCRIPT_DIR/extensions/lib/quorum-peer.ts" \
   "$PI_AGENT_DIR/extensions/lib/quorum-peer.ts"
+
+# SHA-256 core (our own, no system hash binary) + the checksum CLI for runners.
+install_file \
+  "$SCRIPT_DIR/extensions/lib/sha256.ts" \
+  "$PI_AGENT_DIR/extensions/lib/sha256.ts"
+
+install_file \
+  "$SCRIPT_DIR/extensions/lib/checksum-cli.ts" \
+  "$PI_AGENT_DIR/extensions/lib/checksum-cli.ts"
 
 # Clean up pre-reorg paths if present (upgrade path).
 for stale in adapter-route.ts adversary-parse.ts adversary-capture.ts; do
@@ -749,6 +765,7 @@ echo "   planner-worker.ts     (/plan \"<prompt>\" command; planner-worker tool 
 echo "   coder-worker.ts       (/implement \"<prompt>\" command; coder-worker tool when in --tools — WRITES the real repo, writable/non-research session only)"
 echo "   qwen25coder-toolcall.ts (repairs Qwen2.5-Coder-32B leaked tool calls; no-op for other models)"
 echo "   xml-function-toolcall.ts (repairs <function=…> calls trapped in the text/thinking channel; 27B + 80B)"
+echo "   checksum.ts (SHA-256 file/value; verify a write landed exactly; our own hash, jail-safe)"
 echo ""
 echo " Research mode (read-only jail) — research-mode.ts, auto-discovered:"
 echo "   Strongest (harness-level) invocation:"
