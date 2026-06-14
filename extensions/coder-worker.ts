@@ -213,6 +213,7 @@ export default function (pi: any) {
       "Pass the plan-file path and the concrete change in the prompt (e.g. 'read <plan path> and implement the refactor of scripts/bash with tests first'). The worker carries no other context.",
       "Like the other workers it is gated by --tools: it is only available when 'coder-worker' is in --tools. It refuses in research mode and inside a dispatched child (recursion guard).",
       "Pass an optional label to tag the run; there is no plan/report file — review the returned git diff/status summary.",
+      "RPI chain stage 3 of 3 (Implement). Run after the Plan is done and gated: give the worker the plan-file path, then gate the resulting diff with adversary-review and fix only confirmed concerns (re-gate until clean). Needs a writable non-research session; on <112GB boxes export PI_CODER_TIER=small so the Coder uses the 27B on :18080 instead of the absent 32B on :18111. Honor step-by-step / check-in pacing.",
     ],
     parameters: {
       type: "object",

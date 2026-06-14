@@ -212,6 +212,7 @@ export default function (pi: any) {
       "Use adversary-review to get a second, independent opinion on a file you produced — it is read-only and cannot change anything.",
       "The reviewed file may be a workspace path (your research doc) or a repo path; the review is written under <workspace>/reviews/ in research mode, else ./reviews.",
       "Pass quorum=true for higher-stakes reviews; leave it off for a quick single pass.",
+      "RPI gate: run after each chain stage (the research report, the plan, then the implementation diff) on that stage's artifact. Before spending a worker to fix a flagged concern, verify it against the actual files yourself — don't burn a dispatch on a false positive.",
     ],
     parameters: {
       type: "object",

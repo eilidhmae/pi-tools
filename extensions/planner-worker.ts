@@ -206,6 +206,7 @@ export default function (pi: any) {
       "Use planner-worker to delegate a scoped, self-contained planning task (e.g. 'read the research report and plan the refactor of scripts/bash'). The worker is read-only — it cannot change the repo.",
       "Give a complete, self-contained prompt; the worker carries no other context.",
       "Pass an optional label to name the plan file; otherwise it is named 'plan-<timestamp>.md'.",
+      "RPI chain stage 2 of 3 (Plan). Run after Research is done and gated: tell the worker where the research report is, then gate the plan with adversary-review (verify each concern yourself before revising), and pass the plan-file path to coder-worker. Honor any step-by-step / check-in pacing the user set.",
     ],
     parameters: {
       type: "object",
