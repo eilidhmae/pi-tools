@@ -263,6 +263,17 @@ install_file \
   "$SCRIPT_DIR/extensions/qwen25coder-toolcall.ts" \
   "$PI_AGENT_DIR/extensions/qwen25coder-toolcall.ts"
 
+# XML <function=…> tool-call repair: the local agentic models (27B local-mlx,
+# 80B local-mlx-80b) sometimes emit a Hermes-XML tool call as text — the 27B
+# traps it inside its <think> block under load, the 80B emits it in the answer —
+# which the backend parser drops, so pi never dispatches and the turn dead-ends.
+# This overrides those providers' streams to lift the call out of the text OR
+# thinking channel into a real toolCall. No-op for turns with a structured call,
+# and where the provider is absent from models.json.
+install_file \
+  "$SCRIPT_DIR/extensions/xml-function-toolcall.ts" \
+  "$PI_AGENT_DIR/extensions/xml-function-toolcall.ts"
+
 # Research mode extension (read-only jail with isolated write workspace).
 # Single self-contained extension: provides write-research + bash-safe tools,
 # the /research-mode command, system-prompt injection, and tool enforcement.
@@ -737,6 +748,7 @@ echo "   research-worker.ts    (/research \"<prompt>\" command; research-worker 
 echo "   planner-worker.ts     (/plan \"<prompt>\" command; planner-worker tool when in --tools)"
 echo "   coder-worker.ts       (/implement \"<prompt>\" command; coder-worker tool when in --tools — WRITES the real repo, writable/non-research session only)"
 echo "   qwen25coder-toolcall.ts (repairs Qwen2.5-Coder-32B leaked tool calls; no-op for other models)"
+echo "   xml-function-toolcall.ts (repairs <function=…> calls trapped in the text/thinking channel; 27B + 80B)"
 echo ""
 echo " Research mode (read-only jail) — research-mode.ts, auto-discovered:"
 echo "   Strongest (harness-level) invocation:"
