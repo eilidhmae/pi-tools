@@ -98,6 +98,7 @@ export function summarizeRun(o: { prompt: string }): string {
  */
 export function inDispatchedChild(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.PI_CODER_CHILD === "1"
+    || env.PI_CODER_REVIEW_CHILD === "1"
     || env.PI_PLANNER_CHILD === "1"
     || env.PI_RESEARCH_WORKER_CHILD === "1"
     || env.PI_ADVERSARY_CHILD === "1";
@@ -214,6 +215,7 @@ export default function (pi: any) {
       "Like the other workers it is gated by --tools: it is only available when 'coder-worker' is in --tools. It refuses in research mode and inside a dispatched child (recursion guard).",
       "Pass an optional label to tag the run; there is no plan/report file — review the returned git diff/status summary.",
       "RPI chain stage 3 of 3 (Implement). Run after the Plan is done and gated: give the worker the plan-file path, then gate the resulting diff with adversary-review and fix only confirmed concerns (re-gate until clean). Needs a writable non-research session; on <112GB boxes export PI_CODER_TIER=small so the Coder uses the 27B on :18080 instead of the absent 32B on :18111. Honor step-by-step / check-in pacing.",
+      "Coder dual role in RPI: besides implementing, the coder model is the implementability reviewer at the PLAN gate (a one-shot review of the plan it will build, run blind to the adversary's verdict). As that reviewer its decisive vote is on APPROACH / buildability — is this plan correct and cleanly implementable — NOT on should-this-exist (the adversary owns design/scope; a coder approves what it can build). Tag a finding that asserts a provable defect or an unverifiable platform fact as a fact/blocker (not votable), separately from buildability concerns. The plan-gate coder review is dispatched via the separate `coder-review` tool (one-shot, no writes); this `coder-worker` tool is implement-only.",
       "State the deployment-target OS/arch in the implement prompt. The Coder writes inside its session (often a Linux container) but the artifact may run on the macOS host — it must target the destination, not its own runtime: portable paths, no /proc on a macOS target, no GNU-only flags on BSD. If the plan hard-codes a sandbox-specific dependency, fix it to the target.",
     ],
     parameters: {

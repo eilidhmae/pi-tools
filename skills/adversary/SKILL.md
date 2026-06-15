@@ -88,6 +88,15 @@ What was the agent asked to do? What did it say it did? Now verify:
 - For each feature supposedly implemented: trace the code path
 - Flag any claim that does not match filesystem reality
 
+**Do not certify what you cannot check.** A claim you were unable to verify from
+here — a platform fact, an API/command that exists on the *target*, a runtime
+outcome the jail cannot produce — is **not** "verified". Report it as a
+**blocking, unresolved** finding ("UNVERIFIED — requires on-target / runtime
+confirmation"), not a pass. "All claims verified" is only honest when you
+actually verified them; silently waving through a plausible-but-unchecked claim
+is the failure this step exists to prevent. The dispatcher treats such facts as
+non-votable and may have to confirm them on the target before the gate can clear.
+
 ### Step 2: Test Verification (static in the jail)
 
 - Identify test files relevant to the changes (`read`, `grep`, `find`).
@@ -187,6 +196,14 @@ For the primary design decision in this change:
 - Describe at least one simpler alternative
 - Explain the tradeoff (what you'd gain and lose)
 - If the chosen approach is genuinely the simplest, say so
+- **Does it earn its existence?** "Should this exist at all" is yours to judge —
+  do not assume the artifact is warranted just because it is implementable. An
+  artifact that adds nothing over what it wraps (a script whose whole body is a
+  single bare command the user could run directly; a layer with no behaviour of
+  its own) is a **design defect**, not a neutral choice — flag it (`major`,
+  `maintainability`), do not pass it. When you gate an RPI plan, this
+  design/scope verdict is the adversary's to own: the implementor will approve
+  anything it can build, so a null or over-built design only gets caught here.
 
 ### Step 7: Assumptions
 
