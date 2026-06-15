@@ -224,7 +224,9 @@ export default function (pi: any) {
       required: ["path"],
     },
     execute: async (_toolCallId: string, params: { path: string; quorum?: boolean }, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: any) => {
-      if (process.env.PI_ADVERSARY_CHILD === "1" || process.env.PI_RESEARCH_WORKER_CHILD === "1") {
+      if (process.env.PI_ADVERSARY_CHILD === "1" || process.env.PI_RESEARCH_WORKER_CHILD === "1"
+          || process.env.PI_PLANNER_CHILD === "1" || process.env.PI_CODER_CHILD === "1"
+          || process.env.PI_CODER_REVIEW_CHILD === "1") {
         return errResult("adversary-review is unavailable inside a dispatched jailed child (recursion guard).");
       }
       // Not research-gated: the spawned reviewer is jailed read-only by

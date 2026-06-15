@@ -168,7 +168,7 @@ function tail(s: string, n = 2500): string {
  * is the defense-in-depth backstop.)
  */
 export function inDispatchedChild(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.PI_PLANNER_CHILD === "1" || env.PI_RESEARCH_WORKER_CHILD === "1" || env.PI_ADVERSARY_CHILD === "1";
+  return env.PI_PLANNER_CHILD === "1" || env.PI_RESEARCH_WORKER_CHILD === "1" || env.PI_ADVERSARY_CHILD === "1" || env.PI_CODER_CHILD === "1" || env.PI_CODER_REVIEW_CHILD === "1";
 }
 
 // ---------------------------------------------------------------------------

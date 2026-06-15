@@ -29,6 +29,7 @@
 #   extensions/research-worker.ts              → extensions/research-worker.ts  (research-worker tool + /research)
 #   extensions/planner-worker.ts               → extensions/planner-worker.ts  (planner-worker tool + /plan)
 #   extensions/coder-worker.ts                 → extensions/coder-worker.ts  (coder-worker tool + /implement; writes the real repo, non-research only)
+#   extensions/coder-review.ts                 → extensions/coder-review.ts  (coder-review tool + /coder-review; one-shot plan implementability review)
 #   extensions/lib/*.ts                        → extensions/lib/*.ts  (helper modules)
 #   scripts/bash/adversary-check.sh              → scripts/adversary-check.sh
 #   scripts/bash/adversary-pass.sh               → scripts/adversary-pass.sh
@@ -36,6 +37,7 @@
 #   scripts/bash/research-jailed.sh              → scripts/research-jailed.sh
 #   scripts/bash/plan-jailed.sh                  → scripts/plan-jailed.sh
 #   scripts/bash/coder-run.sh                    → scripts/coder-run.sh
+#   scripts/bash/coder-review.sh                 → scripts/coder-review.sh
 #   scripts/bash/adversary-scan.sh               → scripts/adversary-scan.sh
 #   scripts/bash/adversary-loop.sh               → scripts/adversary-loop.sh
 #   scripts/bash/capture-review.sh               → scripts/capture-review.sh
@@ -181,7 +183,7 @@ install_file "$SCRIPT_DIR/AGENTS.md" "$PI_AGENT_DIR/AGENTS.md"
 
 echo ""
 echo "=== Skills ==="
-for skill in adversary manager orchestrator worker research plan rpi; do
+for skill in adversary manager orchestrator worker research plan rpi coder-review; do
   install_file \
     "$SCRIPT_DIR/skills/${skill}/SKILL.md" \
     "$PI_AGENT_DIR/skills/${skill}/SKILL.md"
@@ -238,6 +240,15 @@ install_file \
 install_file \
   "$SCRIPT_DIR/extensions/coder-worker.ts" \
   "$PI_AGENT_DIR/extensions/coder-worker.ts"
+
+# Coder review: the `coder-review` tool (agent-invokable, gated by --tools) + the
+# `/coder-review <plan>` command. Both run a single-turn implementability review
+# of a plan by the coder model (coder-review.sh) — the RPI plan gate's
+# heterogeneous partner to adversary-review. Read-only, saves to ./reviews/. Opt
+# the tool in with --tools ...,coder-review.
+install_file \
+  "$SCRIPT_DIR/extensions/coder-review.ts" \
+  "$PI_AGENT_DIR/extensions/coder-review.ts"
 
 # Default role: light coordinator persona + situational tool guidance for bare
 # `pi` (defers to research mode / restricted sessions). Opt out: --no-default-role.
@@ -378,6 +389,13 @@ install_file \
   "$SCRIPT_DIR/scripts/bash/coder-run.sh" \
   "${SCRIPTS_DIR}/coder-run.sh"
 chmod +x "${SCRIPTS_DIR}/coder-run.sh"
+
+# Single-turn implementability review of a plan by the coder model (read-only, no
+# repo writes). The RPI plan gate's heterogeneous partner to adversary-pass.sh.
+install_file \
+  "$SCRIPT_DIR/scripts/bash/coder-review.sh" \
+  "${SCRIPTS_DIR}/coder-review.sh"
+chmod +x "${SCRIPTS_DIR}/coder-review.sh"
 
 install_file \
   "$SCRIPT_DIR/scripts/bash/adversary-scan.sh" \
@@ -750,6 +768,7 @@ echo "   /adversary-pass <file>     # jailed adversary review of a file (add --q
 echo "   /research \"<prompt>\"        # dispatch a jailed research worker to do a task"
 echo "   /plan \"<prompt>\"            # dispatch a jailed planner worker to produce a plan"
 echo "   /implement \"<prompt>\"       # dispatch a TDD coder worker that WRITES the real repo (writable/non-research session only)"
+echo "   /coder-review <plan>       # one-shot implementability review of a plan by the coder model (RPI plan gate)"
 echo "   /skill:adversary           # full adversary review"
 echo "   /skill:manager             # manager coordination session"
 echo "   /skill:orchestrator        # orchestrator session"
@@ -776,6 +795,7 @@ echo "   adversary-review.ts   (/adversary-pass <file> command; adversary-review
 echo "   research-worker.ts    (/research \"<prompt>\" command; research-worker tool when in --tools)"
 echo "   planner-worker.ts     (/plan \"<prompt>\" command; planner-worker tool when in --tools)"
 echo "   coder-worker.ts       (/implement \"<prompt>\" command; coder-worker tool when in --tools — WRITES the real repo, writable/non-research session only)"
+echo "   coder-review.ts       (/coder-review <plan> command; coder-review tool when in --tools — one-shot plan implementability review, read-only)"
 echo "   qwen25coder-toolcall.ts (repairs Qwen2.5-Coder-32B leaked tool calls; no-op for other models)"
 echo "   xml-function-toolcall.ts (repairs <function=…> calls trapped in the text/thinking channel; 27B + 80B)"
 echo "   checksum.ts (SHA-256 file/value; verify a write landed exactly; our own hash, jail-safe)"
