@@ -25,8 +25,11 @@ build:
 	# install.sh --local stages the pi-tools agent into ./.pi/agent but does not
 	# write a local-mlx models.json (the Apple-Silicon autodetect needs :18080 up,
 	# which it is not at build time). Bake the provider map from the template so
-	# the guest knows the 127.0.0.1:1808x endpoints the entrypoint forwards.
-	cp "$(REPO_ROOT)/server/models.json.template" .pi/agent/models.json
+	# the guest knows the 127.0.0.1:1808x endpoints the entrypoint forwards —
+	# dropping any model id containing $HOME (a host-absolute path that does not
+	# resolve inside the guest; the 32GB host serves plain-id models anyway).
+	jq '(.providers[].models) |= map(select(.id | contains("$$HOME") | not))' \
+	  "$(REPO_ROOT)/server/models.json.template" > .pi/agent/models.json
 	docker build \
 	  --build-arg USERNAME="$(USERNAME)" \
 	  --build-arg UID="$(UID)" \

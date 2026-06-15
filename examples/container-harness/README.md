@@ -23,6 +23,7 @@ while reaching back to the host inference servers.
 ## Prerequisites
 
 - **Docker** (Docker Desktop on macOS, or Docker Engine on Linux).
+- **`jq`** on the build host (the Makefile uses it to bake the provider map).
 - **Host MLX servers** from this repo's `server/` track, **bound to `0.0.0.0`**
   so the gateway can reach them (not just `127.0.0.1`):
 

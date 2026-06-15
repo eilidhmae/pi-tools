@@ -77,9 +77,12 @@ COPY requirements.txt /opt/harness/requirements.txt
 RUN pip install --no-cache-dir -r /opt/harness/requirements.txt
 
 # Staged pi config: the Makefile runs `install.sh --local` into ./.pi (the
-# pi-tools agent: skills, extensions, workers, scripts) and drops in the harness
-# models.json, then docker build copies it here owned by the host-matched user.
-COPY --chown=$UID:$GID .pi /home/$USERNAME/.pi
+# pi-tools agent: skills, extensions, workers, scripts) and bakes the harness
+# models.json, then docker build copies it here. chown via a separate RUN —
+# not `COPY --chown=$ARG`, which only interpolates build args under BuildKit —
+# so the build also works on the legacy builder / older Docker Engine.
+COPY .pi /home/$USERNAME/.pi
+RUN chown -R "$UID:$GID" /home/$USERNAME/.pi
 
 WORKDIR /opt/harness
 USER $USERNAME
