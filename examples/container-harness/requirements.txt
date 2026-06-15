@@ -1,0 +1,3 @@
+# Extra Python packages for the sandbox image.
+# Add one package per line, then `make build`.
+# Editing this file re-runs only the pip install layer (not pi install / config copy).
