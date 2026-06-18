@@ -152,6 +152,34 @@ the first request.
 
 Test: `node --experimental-strip-types extensions/local-host-override.test.ts`.
 
+## Thinking delimiter strip (`thinking-delimiter-strip.ts`)
+
+Strips stray `<think>` / `</think>` delimiter tokens that leak into a finished
+assistant message's reasoning channel. Auto-discovered (no `--tools` entry, no
+command); strict no-op unless a thinking block actually contains a delimiter.
+
+**Known-harmless behavior it cleans up.** With a thinking Qwen model on the
+patched `mlx_lm.server` reasoning split, the server separates reasoning from the
+answer with a token-level state machine. A generated `<think>` flips the state
+`normal → reasoning`, and the matched delimiter text is attributed to the channel
+it transitions *into*. On a quick tool-dispatch turn the model reasons for ~zero
+tokens, so the only thing in the reasoning channel is the bare opening tag — the
+message arrives with a thinking block whose entire content is `"<think>\n\n"`. It
+renders as a visible, content-free `<think>` and (because same-model thinking
+blocks are replayed) is fed back into the next request.
+
+**It is cosmetic** — tool calls and answers are unaffected; only the reasoning
+channel is dirty. If you are NOT running this extension and you see a stray
+`<think>` right before a tool call, that is this same harmless artifact, not a
+malfunction.
+
+On `message_end` the extension removes a leading `<think>` and/or trailing
+`</think>` (with surrounding whitespace) from each affected thinking block, and
+drops a block left empty (it was delimiter-only). Real reasoning is preserved
+verbatim; a delimiter embedded mid-reasoning (vanishingly rare) is left alone.
+
+Test: `node --experimental-strip-types extensions/thinking-delimiter-strip.test.ts`.
+
 ## Security model
 
 The jail is **allow-only**, not a denylist:
