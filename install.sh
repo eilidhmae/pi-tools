@@ -285,6 +285,16 @@ install_file \
   "$SCRIPT_DIR/extensions/xml-function-toolcall.ts" \
   "$PI_AGENT_DIR/extensions/xml-function-toolcall.ts"
 
+# Thinking delimiter strip: cosmetic cleanup of stray <think>/</think> tokens
+# that the reasoning-split state machine leaks into a thinking block on
+# empty-reasoning (quick tool-dispatch) turns — e.g. a block whose whole content
+# is "<think>\n\n". Harmless (tool calls/answers are unaffected) but visible and
+# replayed back into history. Boundary-only strip; strict no-op when no thinking
+# block contains a delimiter, so safe against any provider.
+install_file \
+  "$SCRIPT_DIR/extensions/thinking-delimiter-strip.ts" \
+  "$PI_AGENT_DIR/extensions/thinking-delimiter-strip.ts"
+
 # checksum tool: SHA-256 of a file/value, or verify a file matches intended
 # content — so a worker/runner can prove a write landed exactly (no system hash
 # binary; works in the research jail). Built on extensions/lib/sha256.ts.
@@ -798,6 +808,7 @@ echo "   coder-worker.ts       (/implement \"<prompt>\" command; coder-worker to
 echo "   coder-review.ts       (/coder-review <plan> command; coder-review tool when in --tools — one-shot plan implementability review, read-only)"
 echo "   qwen25coder-toolcall.ts (repairs Qwen2.5-Coder-32B leaked tool calls; no-op for other models)"
 echo "   xml-function-toolcall.ts (repairs <function=…> calls trapped in the text/thinking channel; 27B + 80B)"
+echo "   thinking-delimiter-strip.ts (strips stray <think>/</think> leaked into empty reasoning; cosmetic, no-op otherwise)"
 echo "   checksum.ts (SHA-256 file/value; verify a write landed exactly; our own hash, jail-safe)"
 echo ""
 echo " Research mode (read-only jail) — research-mode.ts, auto-discovered:"
