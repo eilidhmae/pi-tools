@@ -34,6 +34,7 @@ import { join } from "path";
 
 import { captureFromQuorum, ReviewerOutput } from "./lib/adversary-capture";
 import { buildPeerArgs, findResearchModeExt } from "./lib/quorum-peer";
+import { boundedBuffer } from "./lib/bounded-buffer.ts";
 
 // --- Configuration ---
 //
@@ -160,7 +161,7 @@ async function spawnPeerAdversary(
     `with verdict, confidence, artifact, and findings. Skip the prose summary — block only.`;
 
   return new Promise((resolve) => {
-    let stdout = "";
+    const stdout = boundedBuffer();
     let settled = false;
 
     const child = spawn(
@@ -176,32 +177,26 @@ async function spawnPeerAdversary(
     child.stdin.write(skillContent);
     child.stdin.end();
 
-    // Bound heap: keep only the trailing OUT_CAP bytes of the peer's stdout so
-    // a runaway reasoning stream can't overflow pi's V8 heap. 4 MB is far above
-    // any real adversary report (rawOutput is parsed/captured downstream).
-    const OUT_CAP = 4 * 1024 * 1024;
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString();
-      if (stdout.length > OUT_CAP) stdout = stdout.slice(-OUT_CAP);
-    });
+    child.stdout.on("data", stdout.push);
 
     const finish = (reason: string) => {
       if (settled) return;
       settled = true;
-      const verdict = extractVerdict(stdout);
+      const text = stdout.value();
+      const verdict = extractVerdict(text);
       // Pass UNKNOWN through verbatim. majorityVerdict treats UNKNOWN as
       // an abstention; the upstream caller can also surface the
       // unparseable output to the operator.
       resolve({
         verdict,
-        findings: stdout.slice(0, 2000), // cap to avoid context explosion
-        rawOutput: stdout,
+        findings: text.slice(0, 2000), // cap to avoid context explosion
+        rawOutput: text,
       });
     };
 
     child.on("close", () => finish("exit"));
     child.on("error", (err) => {
-      stdout += `\nspawn error: ${err.message}`;
+      stdout.append(`\nspawn error: ${err.message}`);
       finish("error");
     });
 
@@ -209,7 +204,7 @@ async function spawnPeerAdversary(
     setTimeout(() => {
       if (!settled) {
         child.kill("SIGTERM");
-        stdout += "\n[peer adversary timed out]";
+        stdout.append("\n[peer adversary timed out]");
         finish("timeout");
       }
     }, PEER_TIMEOUT_MS);

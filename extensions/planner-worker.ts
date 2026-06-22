@@ -41,6 +41,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { boundedBuffer } from "./lib/bounded-buffer.ts";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for unit testing; no pi runtime dependency).
@@ -122,16 +123,10 @@ function runWorker(o: {
   const timeoutMs = 600_000;
 
   return new Promise<RunResult>((resolve) => {
-    let out = "";
+    const out = boundedBuffer();
     let settled = false;
     const child = spawn("bash", args, { env, cwd: o.cwd, stdio: ["ignore", "pipe", "pipe"] });
-    // Bound heap: a thinking model's reasoning stream can run away, and the
-    // coordinator holds the full child stdout here — that overflows pi's V8
-    // heap and OOMs the whole session. Keep only the trailing OUT_CAP bytes,
-    // far above tail()'s 2500-char report size and the end-of-output plan
-    // path the parse keys on, so neither is affected in normal runs.
-    const OUT_CAP = 4 * 1024 * 1024;
-    const onData = (c: Buffer) => { out += c.toString(); if (out.length > OUT_CAP) out = out.slice(-OUT_CAP); };
+    const onData = out.push;
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);
 
@@ -139,9 +134,10 @@ function runWorker(o: {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (extra) out += `\n${extra}`;
-      const { planPath } = parseWorkerOutput(out);
-      resolve({ ok: code === 0 || planPath !== null, planPath, output: out });
+      if (extra) out.append(`\n${extra}`);
+      const text = out.value();
+      const { planPath } = parseWorkerOutput(text);
+      resolve({ ok: code === 0 || planPath !== null, planPath, output: text });
     };
 
     const timer = setTimeout(() => {
@@ -152,7 +148,7 @@ function runWorker(o: {
 
     child.on("close", (code) => settle(code));
     child.on("error", (err) => {
-      out += `\nspawn error: ${err.message}`;
+      out.append(`\nspawn error: ${err.message}`);
       settle(1);
     });
     o.signal?.addEventListener("abort", () => { child.kill("SIGTERM"); settle(null, "[aborted]"); });
