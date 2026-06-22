@@ -318,37 +318,19 @@ install_file \
 # extensions/lib/ so pi's flat-glob extension discovery does NOT try to
 # load them as plugins (which would error with "no valid factory
 # function"). pi's discovery is empirically non-recursive, verified on
-# pi 0.74.0.
-install_file \
-  "$SCRIPT_DIR/extensions/lib/adapter-route.ts" \
-  "$PI_AGENT_DIR/extensions/lib/adapter-route.ts"
-
-install_file \
-  "$SCRIPT_DIR/extensions/lib/adversary-parse.ts" \
-  "$PI_AGENT_DIR/extensions/lib/adversary-parse.ts"
-
-install_file \
-  "$SCRIPT_DIR/extensions/lib/adversary-capture.ts" \
-  "$PI_AGENT_DIR/extensions/lib/adversary-capture.ts"
-
-install_file \
-  "$SCRIPT_DIR/extensions/lib/quorum-peer.ts" \
-  "$PI_AGENT_DIR/extensions/lib/quorum-peer.ts"
-
-# SHA-256 core (our own, no system hash binary) + the checksum CLI for runners.
-install_file \
-  "$SCRIPT_DIR/extensions/lib/sha256.ts" \
-  "$PI_AGENT_DIR/extensions/lib/sha256.ts"
-
-install_file \
-  "$SCRIPT_DIR/extensions/lib/checksum-cli.ts" \
-  "$PI_AGENT_DIR/extensions/lib/checksum-cli.ts"
-
-# Pure tool-call recovery core for qwen25coder-toolcall. Kept out of the
-# extension entry so the type-strip test imports it without resolving pi-ai.
-install_file \
-  "$SCRIPT_DIR/extensions/lib/qwen25coder-extract.ts" \
-  "$PI_AGENT_DIR/extensions/lib/qwen25coder-extract.ts"
+# pi 0.74.0. Includes: adapter-route, adversary-parse/-capture, quorum-peer,
+# sha256 + checksum-cli, qwen25coder-extract, bounded-buffer.
+#
+# Glob the whole dir (skipping *.test.ts) rather than enumerating each file:
+# an extension that imports a lib module not in the list ships BROKEN — exactly
+# how bounded-buffer.ts was first omitted, failing every dispatcher load. The
+# header's `extensions/lib/*.ts` is the literal contract.
+for libfile in "$SCRIPT_DIR"/extensions/lib/*.ts; do
+  case "$libfile" in
+    *.test.ts) continue ;;
+  esac
+  install_file "$libfile" "$PI_AGENT_DIR/extensions/lib/$(basename "$libfile")"
+done
 
 # Clean up pre-reorg paths if present (upgrade path).
 for stale in adapter-route.ts adversary-parse.ts adversary-capture.ts; do
