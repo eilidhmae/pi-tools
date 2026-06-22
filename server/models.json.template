@@ -79,7 +79,7 @@
         { "id": "$HOME/models/Qwen3.5-27B-4bit", "name": "Qwen3.5-27B as Code Worker (small tier; thinking controllable)", "reasoning": true, "contextWindow": 262144 }
       ]
     },
-    "local-mlx-qwen25coder32b": {
+    "local-mlx-coder32b": {
       "baseUrl": "http://127.0.0.1:18111/v1",
       "api": "openai-completions",
       "apiKey": "local",
@@ -89,6 +89,18 @@
       },
       "models": [
         { "id": "mlx-community/Qwen2.5-Coder-32B-Instruct-8bit", "name": "Qwen2.5-Coder 32B Instruct (MLX 8bit, dense coder)", "contextWindow": 32768 }
+      ]
+    },
+    "local-mlx-gemma431b": {
+      "baseUrl": "http://127.0.0.1:18112/v1",
+      "api": "openai-completions",
+      "apiKey": "local",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        { "id": "unsloth/gemma-4-31b-it-MLX-8bit", "name": "Gemma-4-31B-it (MLX 8bit, reasoning coder; thinking on)", "reasoning": true, "contextWindow": 262144 }
       ]
     }
   }

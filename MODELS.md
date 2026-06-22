@@ -50,8 +50,9 @@ The deployed local stack splits roles across models. "RPI" =
 
 | Role                                            | Model                              | Provider id                  | Port    | Context | Notes                         |
 | ----------------------------------------------- | ---------------------------------- | ---------------------------- | ------- | ------- | ----------------------------- |
-| Session (interactive) / Adversary / Researcher / Planner | Qwen3.5-27B-4bit          | `local-mlx`                  | `:18080`| 262k    | thinking; session default     |
-| Code Worker / Implementor                       | Qwen2.5-Coder-32B-Instruct-8bit    | `local-mlx-qwen25coder32b`   | `:18111`| 32k     | dense coder                   |
+| Session (interactive) / Adversary / Researcher / Planner | Qwen3.5-27B-4bit          | `local-mlx`                  | `:18080`| 262k    | thinking                      |
+| Code Worker / Implementor                       | Qwen2.5-Coder-32B-Instruct-8bit    | `local-mlx-coder32b`         | `:18111`| 32k     | dense coder                   |
+| Code Worker (alt, reasoning)                     | Gemma-4-31B-it 8bit (+MTP drafter) | `local-mlx-gemma431b`        | `:18112`| 262k    | reasoning coder; thinking on  |
 | Heavy single-session alternate                  | Qwen3-Coder-Next-80B-A3B 8-bit     | `local-mlx-80b`              | `:18130`| —       | MANUAL; 128GB-class only      |
 
 ### Two certified memory tiers
@@ -67,7 +68,10 @@ above any 64/96 box).
   reasoning roles, the 32B for the implement step. The 80B is a **manual
   single-session alternate**: it runs ONE heavy track at a time and
   spawns no parallel agents. `install.sh` provisions the
-  `local-mlx-qwen25coder32b` provider on this tier.
+  `local-mlx-coder32b` provider on this tier. A reasoning alternate,
+  Gemma-4-31B-it (`local-mlx-gemma431b`, `:18112`), is also provisioned as a
+  second dense-class coder you can point a worker at (its own port — never
+  shares the `:18111` slot, so there is no wrong-model ambiguity).
 - **32GB-class (small tier, certified).** **27B for all roles**
   (small-context). The 32B Code Worker is **not** provisioned — the
   ~35 GB worker can't co-reside with the resident 27B. `install.sh`
@@ -77,8 +81,13 @@ above any 64/96 box).
   falls into the conservative small-tier profile until someone certifies
   it.
 
-The session default stays the 27B (`local-mlx`); the tiering only governs
-which *worker* providers are added.
+The arm64 install default is the Gemma-4-31B reasoning coder
+(`local-mlx-gemma431b`, `:18112`, served with the E2B speculative-decoding
+draft) — set by `install.sh` (override with `PI_TOOLS_KEEP_DEFAULTS=1` or an
+explicit `defaultProvider`/`defaultModel`). The tiering only governs which
+*worker* providers are added. (Note: driving Gemma through `pi -p` currently
+yields empty output / a thinking runaway — the reasoning-channel integration is
+under test; raw-API serving and speculative decoding are verified.)
 
 ### How roles reach their model
 

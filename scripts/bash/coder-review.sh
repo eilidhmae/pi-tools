@@ -22,9 +22,11 @@
 #
 # Tier (PI_CODER_TIER, mirrors coder-run.sh; the reviewer should be the model
 # that will implement):
-#   large (default): the 32B dense coder on :18111 (local-mlx-qwen25coder32b).
+#   large (default): the 32B dense coder on :18111 (local-mlx-coder32b).
 #   small:           the 27B on :18080 (local-mlx-coder27b, thinking-off) for
 #                    <112GB boxes where the 32B can't co-reside.
+#   gemma:           the Gemma-4-31B reasoning coder on :18112
+#                    (local-mlx-gemma431b); thinking on by model default.
 # --model/--provider override the tier (e.g. point at a parked 30B-A3B once its
 # backend is up for a depth pass).
 #
@@ -72,7 +74,7 @@ CODER_THINKING="${PI_CODER_THINKING:-off}"   # 27B path; effective only via the 
 if [[ -z "$PROVIDER" || -z "$MODEL" ]]; then
   case "$CODER_TIER" in
     large)
-      PROVIDER="${PROVIDER:-local-mlx-qwen25coder32b}"
+      PROVIDER="${PROVIDER:-local-mlx-coder32b}"
       MODEL="${MODEL:-mlx-community/Qwen2.5-Coder-32B-Instruct-8bit}"
       CODER_PORT=18111
       ;;
@@ -81,8 +83,13 @@ if [[ -z "$PROVIDER" || -z "$MODEL" ]]; then
       MODEL="${MODEL:-${HOME}/models/Qwen3.5-27B-4bit}"
       CODER_PORT=18080
       ;;
+    gemma)
+      PROVIDER="${PROVIDER:-local-mlx-gemma431b}"
+      MODEL="${MODEL:-unsloth/gemma-4-31b-it-MLX-8bit}"
+      CODER_PORT=18112
+      ;;
     *)
-      echo "ERROR: PI_CODER_TIER must be 'large' or 'small' (got '${CODER_TIER}')." >&2
+      echo "ERROR: PI_CODER_TIER must be 'large', 'small', or 'gemma' (got '${CODER_TIER}')." >&2
       exit 2
       ;;
   esac
@@ -90,7 +97,8 @@ else
   # Both overridden: derive the port from the provider's known band, else trust
   # the override and skip the reachability precheck (operator's responsibility).
   case "$PROVIDER" in
-    local-mlx-qwen25coder32b) CODER_PORT=18111 ;;
+    local-mlx-coder32b) CODER_PORT=18111 ;;
+    local-mlx-gemma431b) CODER_PORT=18112 ;;
     local-mlx-coder27b|local-mlx) CODER_PORT=18080 ;;
     *) CODER_PORT="" ;;
   esac

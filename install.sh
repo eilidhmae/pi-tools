@@ -264,7 +264,7 @@ install_file \
   "$SCRIPT_DIR/extensions/local-host-override.ts" \
   "$PI_AGENT_DIR/extensions/local-host-override.ts"
 
-# Qwen2.5-Coder-32B tool-call repair: the dense coder on local-mlx-qwen25coder32b
+# Qwen2.5-Coder-32B tool-call repair: the dense coder on local-mlx-coder32b
 # emits tool calls as text (<tools>/<tool_call>/bare JSON/```json fence) that the
 # backend parser drops, so pi never dispatches. A message_end hook recovers the
 # first leaked call and returns the message with a real toolCall + stopReason
@@ -621,8 +621,11 @@ fi
 #     local-mlx, flagged thinking-controllable). It serves the Coder on the SMALL
 #     tier, and is also provisioned on LARGE so a 128GB box can exercise the small
 #     path via PI_CODER_TIER=small. Always available on arm64 (the 27B is up).
-#   local-mlx-qwen25coder32b — the 35GB dense 32B Coder, LARGE tier only (it
+#   local-mlx-coder32b — the 35GB dense 32B Coder, LARGE tier only (it
 #     can't co-reside with the resident 27B on a <112GB box).
+#   local-mlx-gemma431b — a reasoning alternate coder (Gemma-4-31B-it 8bit,
+#     ~33GB) on its own port :18112, LARGE tier only. Same one-track-with-80B
+#     rule as the 32B; provisioned so an operator can point a worker at it.
 if [[ "$IS_ARM64" -eq 1 ]] && [[ -f "$MODELS_JSON" ]] && [[ -f "$TEMPLATE" ]]; then
   echo ""
   echo "=== Code Worker (27B view): ensuring local-mlx-coder27b in $MODELS_JSON ==="
@@ -632,11 +635,17 @@ if [[ "$IS_ARM64" -eq 1 ]] && [[ -f "$MODELS_JSON" ]] && [[ -f "$TEMPLATE" ]]; t
     echo "  WARNING: coder27b provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
   fi
   if [[ "$MEM_TIER" == "large" ]]; then
-    echo "=== Code Worker (large tier): ensuring local-mlx-qwen25coder32b in $MODELS_JSON ==="
+    echo "=== Code Worker (large tier): ensuring local-mlx-coder32b in $MODELS_JSON ==="
     rc=0
-    merge_provider "$MODELS_JSON" "$TEMPLATE" "local-mlx-qwen25coder32b" || rc=$?
+    merge_provider "$MODELS_JSON" "$TEMPLATE" "local-mlx-coder32b" || rc=$?
     if [[ "$rc" -ne 0 ]]; then
       echo "  WARNING: 32B provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
+    fi
+    echo "=== Code Worker (alt, reasoning): ensuring local-mlx-gemma431b in $MODELS_JSON ==="
+    rc=0
+    merge_provider "$MODELS_JSON" "$TEMPLATE" "local-mlx-gemma431b" || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+      echo "  WARNING: gemma431b provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
     fi
   else
     echo "=== Code Worker: 32B skipped (small tier — 27B serves the Coder via local-mlx-coder27b) ==="
@@ -652,14 +661,18 @@ fi
 # default is decided by models.json declaration order — historically
 # ollama-first, which is the wrong target on arm64.
 #
-# On arm64 we set defaultProvider=local-mlx + defaultModel=~/models/Qwen3.5-27B-4bit
-# (the deployed thinking-adversary model; the id is the literal model dir
-# because mlx_lm.server resolves the request `model` as a path).
-# We do clobber a pre-existing `ollama` default — and the older local-mlx
-# default `qwen3-coder-30b-a3b` (the legacy sft base) — because those are
-# exactly the wrong-default bug we're fixing. We leave any other explicit
-# defaultProvider/defaultModel value alone so operators can pin a different
-# target. Set PI_TOOLS_KEEP_DEFAULTS=1 to suppress the rewrite entirely.
+# On arm64 we set defaultProvider=local-mlx-gemma431b +
+# defaultModel=unsloth/gemma-4-31b-it-MLX-8bit (the Gemma-4-31B reasoning coder
+# on :18112, served with the E2B speculative-decoding draft). The model id is
+# the models.json id, not a path — mlx_lm.server serves whatever --model it
+# loaded regardless of the requested id, so the request id only has to match
+# the provider's models.json entry.
+# We clobber a pre-existing `ollama` default, the legacy sft base
+# `qwen3-coder-30b-a3b`, and the prior local-mlx 27B default
+# (~/models/Qwen3.5-27B-4bit) — those are stale targets we are migrating off.
+# We leave any other explicit defaultProvider/defaultModel value alone so
+# operators can pin a different target. Set PI_TOOLS_KEEP_DEFAULTS=1 to suppress
+# the rewrite entirely.
 SETTINGS_JSON="${PI_AGENT_DIR}/settings.json"
 if [[ "$IS_ARM64" -eq 1 ]] && [[ -z "${PI_TOOLS_KEEP_DEFAULTS:-}" ]]; then
   rc=0
@@ -682,18 +695,22 @@ current_model = data.get("defaultModel")
 #   - no defaults are set, OR
 #   - defaults currently point at ollama (the wrong-target bug).
 # Leave any other explicit value alone.
-# The deployed default is the thinking-adversary track (single Qwen3.5-27B
-# sidecar). mlx_lm.server resolves the request `model` as a path, so the
-# models.json id — and this default — is the literal model dir.
-default_model = os.path.expanduser("~/models/Qwen3.5-27B-4bit")
+# The deployed default is the Gemma-4-31B reasoning coder (local-mlx-gemma431b
+# on :18112, served with the E2B speculative-decoding draft). The default value
+# is the provider's models.json id (an HF repo id), not a path.
+default_provider = "local-mlx-gemma431b"
+default_model = "unsloth/gemma-4-31b-it-MLX-8bit"
 ollama_defaults = {None, "", "ollama"}
-# Overwrite the provider when it's unset/ollama OR already local-mlx (so an
-# already-bootstrapped box with a stale local-mlx default gets migrated too).
-provider_ok_to_overwrite = current_provider in (ollama_defaults | {"local-mlx"})
-# Overwrite the model only when it's a known stale default (ollama ids or the
-# legacy sft base qwen3-coder-30b-a3b). A deliberately-pinned custom model —
-# under any provider — is left alone because model_ok_to_overwrite is False.
-stale_model_defaults = ollama_defaults | {"qwen3-coder", "qwen3-coder:30b", "qwen3-coder-next", "qwen3-coder-30b-a3b"}
+# Overwrite the provider when it's unset/ollama OR a prior local-mlx* default
+# (so an already-bootstrapped box on the old 27B/local-mlx default migrates too).
+provider_ok_to_overwrite = current_provider in (ollama_defaults | {"local-mlx", "local-mlx-gemma431b"})
+# Overwrite the model only when it's a known stale default (ollama ids, the
+# legacy sft base qwen3-coder-30b-a3b, or the prior 27B default). A
+# deliberately-pinned custom model is left alone (model_ok_to_overwrite False).
+stale_model_defaults = ollama_defaults | {
+    "qwen3-coder", "qwen3-coder:30b", "qwen3-coder-next", "qwen3-coder-30b-a3b",
+    os.path.expanduser("~/models/Qwen3.5-27B-4bit"), "unsloth/gemma-4-31b-it-MLX-8bit",
+}
 model_ok_to_overwrite = current_model in stale_model_defaults
 if not (provider_ok_to_overwrite and model_ok_to_overwrite):
     print(f"  NOTE: {path} has non-ollama defaults (provider={current_provider!r}, model={current_model!r}); leaving as-is.")
@@ -703,13 +720,13 @@ if existed:
     backup = f"{path}.bak.{int(time.time())}"
     shutil.copy2(path, backup)
     print(f"  Backup: {backup}")
-data["defaultProvider"] = "local-mlx"
+data["defaultProvider"] = default_provider
 data["defaultModel"] = default_model
 os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
-print(f"  Set: defaultProvider=local-mlx, defaultModel={default_model}")
+print(f"  Set: defaultProvider={default_provider}, defaultModel={default_model}")
 PYEOF
   case "$rc" in
     0)
@@ -749,7 +766,8 @@ echo " Memory tier: ${MEM_TIER} (${MEM_GB} GB unified)"
 if [[ "$MEM_TIER" == "large" ]]; then
   echo "   Role → model map (RPI), 128GB-class:"
   echo "     Session / Adversary / Researcher / Planner → Qwen3.5-27B-4bit (local-mlx, :18080)"
-  echo "     Code Worker / Implementor                  → Qwen2.5-Coder-32B-Instruct-8bit (local-mlx-qwen25coder32b, :18111)"
+  echo "     Code Worker / Implementor                  → Qwen2.5-Coder-32B-Instruct-8bit (local-mlx-coder32b, :18111)"
+  echo "     Code Worker (alt, reasoning)               → Gemma-4-31B-it 8bit (local-mlx-gemma431b, :18112)"
   echo "     27B + 32B co-reside; the 80B (local-mlx-80b, :18130) is a MANUAL single-session"
   echo "     alternate — one heavy track at a time, spawns no parallel agents."
 else
