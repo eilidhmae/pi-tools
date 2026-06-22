@@ -265,11 +265,11 @@ install_file \
   "$PI_AGENT_DIR/extensions/local-host-override.ts"
 
 # Qwen2.5-Coder-32B tool-call repair: the dense coder on local-mlx-qwen25coder32b
-# emits tool calls as text (<tools>/<tool_call>/bare JSON) that the backend
-# parser drops, so pi never dispatches. This overrides that one provider's
-# stream to rewrite the leaked call into a real toolCall. Strict no-op for every
-# other model (scoped to the provider/model id). No-op too where the model isn't
-# served (provider absent from models.json).
+# emits tool calls as text (<tools>/<tool_call>/bare JSON/```json fence) that the
+# backend parser drops, so pi never dispatches. A message_end hook recovers the
+# first leaked call and returns the message with a real toolCall + stopReason
+# toolUse so pi dispatches it. Strict no-op for every other model (scoped to the
+# model id). Pure recovery core in lib/qwen25coder-extract.ts.
 install_file \
   "$SCRIPT_DIR/extensions/qwen25coder-toolcall.ts" \
   "$PI_AGENT_DIR/extensions/qwen25coder-toolcall.ts"
@@ -343,6 +343,12 @@ install_file \
 install_file \
   "$SCRIPT_DIR/extensions/lib/checksum-cli.ts" \
   "$PI_AGENT_DIR/extensions/lib/checksum-cli.ts"
+
+# Pure tool-call recovery core for qwen25coder-toolcall. Kept out of the
+# extension entry so the type-strip test imports it without resolving pi-ai.
+install_file \
+  "$SCRIPT_DIR/extensions/lib/qwen25coder-extract.ts" \
+  "$PI_AGENT_DIR/extensions/lib/qwen25coder-extract.ts"
 
 # Clean up pre-reorg paths if present (upgrade path).
 for stale in adapter-route.ts adversary-parse.ts adversary-capture.ts; do
