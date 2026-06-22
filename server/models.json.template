@@ -97,10 +97,11 @@
       "apiKey": "local",
       "compat": {
         "supportsDeveloperRole": false,
-        "supportsReasoningEffort": false
+        "supportsReasoningEffort": false,
+        "thinkingFormat": "qwen-chat-template"
       },
       "models": [
-        { "id": "unsloth/gemma-4-31b-it-MLX-8bit", "name": "Gemma-4-31B-it (MLX 8bit, reasoning coder; thinking on)", "reasoning": true, "contextWindow": 262144 }
+        { "id": "unsloth/gemma-4-31b-it-MLX-8bit", "name": "Gemma-4-31B-it (MLX 8bit, reasoning coder; thinking via --thinking)", "reasoning": true, "contextWindow": 262144 }
       ]
     }
   }

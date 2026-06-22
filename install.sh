@@ -662,8 +662,8 @@ fi
 # ollama-first, which is the wrong target on arm64.
 #
 # On arm64 we set defaultProvider=local-mlx-gemma431b +
-# defaultModel=unsloth/gemma-4-31b-it-MLX-8bit (the Gemma-4-31B reasoning coder
-# on :18112, served with the E2B speculative-decoding draft). The model id is
+# defaultModel=unsloth/gemma-4-31b-it-MLX-8bit (the Gemma-4-31B coder on :18112;
+# thinking off by default, toggled via pi --thinking). The model id is
 # the models.json id, not a path — mlx_lm.server serves whatever --model it
 # loaded regardless of the requested id, so the request id only has to match
 # the provider's models.json entry.
@@ -695,9 +695,9 @@ current_model = data.get("defaultModel")
 #   - no defaults are set, OR
 #   - defaults currently point at ollama (the wrong-target bug).
 # Leave any other explicit value alone.
-# The deployed default is the Gemma-4-31B reasoning coder (local-mlx-gemma431b
-# on :18112, served with the E2B speculative-decoding draft). The default value
-# is the provider's models.json id (an HF repo id), not a path.
+# The deployed default is the Gemma-4-31B coder (local-mlx-gemma431b on :18112;
+# thinking off by default via the provider's qwen-chat-template compat). The
+# default value is the provider's models.json id (an HF repo id), not a path.
 default_provider = "local-mlx-gemma431b"
 default_model = "unsloth/gemma-4-31b-it-MLX-8bit"
 ollama_defaults = {None, "", "ollama"}

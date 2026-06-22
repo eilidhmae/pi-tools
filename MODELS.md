@@ -52,7 +52,7 @@ The deployed local stack splits roles across models. "RPI" =
 | ----------------------------------------------- | ---------------------------------- | ---------------------------- | ------- | ------- | ----------------------------- |
 | Session (interactive) / Adversary / Researcher / Planner | Qwen3.5-27B-4bit          | `local-mlx`                  | `:18080`| 262k    | thinking                      |
 | Code Worker / Implementor                       | Qwen2.5-Coder-32B-Instruct-8bit    | `local-mlx-coder32b`         | `:18111`| 32k     | dense coder                   |
-| Code Worker (alt, reasoning)                     | Gemma-4-31B-it 8bit (+MTP drafter) | `local-mlx-gemma431b`        | `:18112`| 262k    | reasoning coder; thinking on  |
+| Code Worker (alt, reasoning)                     | Gemma-4-31B-it 8bit                 | `local-mlx-gemma431b`        | `:18112`| 262k    | thinking via --thinking (off default) |
 | Heavy single-session alternate                  | Qwen3-Coder-Next-80B-A3B 8-bit     | `local-mlx-80b`              | `:18130`| —       | MANUAL; 128GB-class only      |
 
 ### Two certified memory tiers
@@ -81,13 +81,24 @@ above any 64/96 box).
   falls into the conservative small-tier profile until someone certifies
   it.
 
-The arm64 install default is the Gemma-4-31B reasoning coder
-(`local-mlx-gemma431b`, `:18112`, served with the E2B speculative-decoding
-draft) — set by `install.sh` (override with `PI_TOOLS_KEEP_DEFAULTS=1` or an
+The arm64 install default is the Gemma-4-31B coder (`local-mlx-gemma431b`,
+`:18112`) — set by `install.sh` (override with `PI_TOOLS_KEEP_DEFAULTS=1` or an
 explicit `defaultProvider`/`defaultModel`). The tiering only governs which
-*worker* providers are added. (Note: driving Gemma through `pi -p` currently
-yields empty output / a thinking runaway — the reasoning-channel integration is
-under test; raw-API serving and speculative decoding are verified.)
+*worker* providers are added.
+
+**Thinking is off by default**, toggled per-run with `pi --thinking <level>`:
+the provider's `thinkingFormat: "qwen-chat-template"` compat makes pi send
+`chat_template_kwargs.enable_thinking`. This is load-bearing — *without* it pi
+never disables Gemma's thinking, the model streams a `reasoning` channel pi
+can't terminate, and the node heap OOMs. (Verified end-to-end: thinking-off
+runs the full TDD worker loop cleanly.)
+
+**Speculative decoding** with the E2B draft gives ~1.6x on short generations but
+trips a Metal GPU command-buffer timeout under large agentic prompts, so it is
+**off by default** (re-enable via the `draft=` token in `config.conf`; see the
+note there). The linked MTP drafter (`gemma-4-31B-it-assistant`) is unusable —
+mlx_lm has no `gemma4_assistant` class (tracked upstream: ml-explore/mlx-lm
+#1276 + #990).
 
 ### How roles reach their model
 
