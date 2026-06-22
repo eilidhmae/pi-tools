@@ -39,6 +39,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { boundedBuffer } from "./lib/bounded-buffer.ts";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for unit testing; no pi runtime dependency).
@@ -136,20 +137,14 @@ function runWorker(o: {
   const timeoutMs = 600_000;
 
   return new Promise<RunResult>((resolve) => {
-    let out = "";
+    const out = boundedBuffer();
     let settled = false;
     // detached: true puts bash in its own process group (pgid === child.pid) and
     // the `pi` grandchild inherits it, so a SIGTERM to -pid reaches the whole
     // tree. Killing bash alone would orphan pi — and an orphaned Coder keeps
     // writing the real repo after we've given up, racing the post-run diff.
     const child = spawn("bash", args, { env, cwd: o.cwd, stdio: ["ignore", "pipe", "pipe"], detached: true });
-    // Bound heap: a thinking model's reasoning stream can run away, and the
-    // coordinator holds the full child stdout here — that overflows pi's V8
-    // heap and OOMs the whole session. Keep only the trailing OUT_CAP bytes,
-    // far above tail()'s 2500-char report size and the end-of-output path/
-    // verdict the parse keys on, so neither is affected in normal runs.
-    const OUT_CAP = 4 * 1024 * 1024;
-    const onData = (c: Buffer) => { out += c.toString(); if (out.length > OUT_CAP) out = out.slice(-OUT_CAP); };
+    const onData = out.push;
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);
 
@@ -161,8 +156,8 @@ function runWorker(o: {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (extra) out += `\n${extra}`;
-      resolve({ ok: code === 0, output: out });
+      if (extra) out.append(`\n${extra}`);
+      resolve({ ok: code === 0, output: out.value() });
     };
 
     const timer = setTimeout(() => {
@@ -173,7 +168,7 @@ function runWorker(o: {
 
     child.on("close", (code) => settle(code));
     child.on("error", (err) => {
-      out += `\nspawn error: ${err.message}`;
+      out.append(`\nspawn error: ${err.message}`);
       settle(1);
     });
     o.signal?.addEventListener("abort", () => { killTree(); settle(null, "[aborted]"); });
