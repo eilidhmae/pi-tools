@@ -143,7 +143,13 @@ function runWorker(o: {
     // tree. Killing bash alone would orphan pi — and an orphaned Coder keeps
     // writing the real repo after we've given up, racing the post-run diff.
     const child = spawn("bash", args, { env, cwd: o.cwd, stdio: ["ignore", "pipe", "pipe"], detached: true });
-    const onData = (c: Buffer) => { out += c.toString(); };
+    // Bound heap: a thinking model's reasoning stream can run away, and the
+    // coordinator holds the full child stdout here — that overflows pi's V8
+    // heap and OOMs the whole session. Keep only the trailing OUT_CAP bytes,
+    // far above tail()'s 2500-char report size and the end-of-output path/
+    // verdict the parse keys on, so neither is affected in normal runs.
+    const OUT_CAP = 4 * 1024 * 1024;
+    const onData = (c: Buffer) => { out += c.toString(); if (out.length > OUT_CAP) out = out.slice(-OUT_CAP); };
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);
 

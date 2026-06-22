@@ -176,8 +176,13 @@ async function spawnPeerAdversary(
     child.stdin.write(skillContent);
     child.stdin.end();
 
+    // Bound heap: keep only the trailing OUT_CAP bytes of the peer's stdout so
+    // a runaway reasoning stream can't overflow pi's V8 heap. 4 MB is far above
+    // any real adversary report (rawOutput is parsed/captured downstream).
+    const OUT_CAP = 4 * 1024 * 1024;
     child.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
+      if (stdout.length > OUT_CAP) stdout = stdout.slice(-OUT_CAP);
     });
 
     const finish = (reason: string) => {

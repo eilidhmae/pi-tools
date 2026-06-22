@@ -125,7 +125,13 @@ function runWorker(o: {
     let out = "";
     let settled = false;
     const child = spawn("bash", args, { env, cwd: o.cwd, stdio: ["ignore", "pipe", "pipe"] });
-    const onData = (c: Buffer) => { out += c.toString(); };
+    // Bound heap: a thinking model's reasoning stream can run away, and the
+    // coordinator holds the full child stdout here — that overflows pi's V8
+    // heap and OOMs the whole session. Keep only the trailing OUT_CAP bytes,
+    // far above tail()'s 2500-char report size and the end-of-output plan
+    // path the parse keys on, so neither is affected in normal runs.
+    const OUT_CAP = 4 * 1024 * 1024;
+    const onData = (c: Buffer) => { out += c.toString(); if (out.length > OUT_CAP) out = out.slice(-OUT_CAP); };
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);
 
