@@ -661,18 +661,16 @@ fi
 # default is decided by models.json declaration order — historically
 # ollama-first, which is the wrong target on arm64.
 #
-# On arm64 we set defaultProvider=local-mlx-gemma431b +
-# defaultModel=unsloth/gemma-4-31b-it-MLX-8bit (the Gemma-4-31B coder on :18112;
-# thinking off by default, toggled via pi --thinking). The model id is
-# the models.json id, not a path — mlx_lm.server serves whatever --model it
-# loaded regardless of the requested id, so the request id only has to match
-# the provider's models.json entry.
-# We clobber a pre-existing `ollama` default, the legacy sft base
-# `qwen3-coder-30b-a3b`, and the prior local-mlx 27B default
-# (~/models/Qwen3.5-27B-4bit) — those are stale targets we are migrating off.
-# We leave any other explicit defaultProvider/defaultModel value alone so
-# operators can pin a different target. Set PI_TOOLS_KEEP_DEFAULTS=1 to suppress
-# the rewrite entirely.
+# On arm64 we set defaultProvider=local-mlx + defaultModel=~/models/Qwen3.5-27B-4bit
+# (the deployed thinking-adversary session model; the id is the literal model dir
+# because mlx_lm.server resolves the request `model` as a path). Gemma-4-31B is
+# provisioned as an alt coder (local-mlx-gemma431b) but is NOT the default —
+# point a worker at it explicitly with --provider/--model.
+# We do clobber a pre-existing `ollama` default — and the older local-mlx
+# default `qwen3-coder-30b-a3b` (the legacy sft base) — because those are
+# exactly the wrong-default bug we're fixing. We leave any other explicit
+# defaultProvider/defaultModel value alone so operators can pin a different
+# target. Set PI_TOOLS_KEEP_DEFAULTS=1 to suppress the rewrite entirely.
 SETTINGS_JSON="${PI_AGENT_DIR}/settings.json"
 if [[ "$IS_ARM64" -eq 1 ]] && [[ -z "${PI_TOOLS_KEEP_DEFAULTS:-}" ]]; then
   rc=0
@@ -695,22 +693,19 @@ current_model = data.get("defaultModel")
 #   - no defaults are set, OR
 #   - defaults currently point at ollama (the wrong-target bug).
 # Leave any other explicit value alone.
-# The deployed default is the Gemma-4-31B coder (local-mlx-gemma431b on :18112;
-# thinking off by default via the provider's qwen-chat-template compat). The
-# default value is the provider's models.json id (an HF repo id), not a path.
-default_provider = "local-mlx-gemma431b"
-default_model = "unsloth/gemma-4-31b-it-MLX-8bit"
+# The deployed default is the thinking-adversary track (single Qwen3.5-27B
+# sidecar). mlx_lm.server resolves the request `model` as a path, so the
+# models.json id — and this default — is the literal model dir.
+default_provider = "local-mlx"
+default_model = os.path.expanduser("~/models/Qwen3.5-27B-4bit")
 ollama_defaults = {None, "", "ollama"}
-# Overwrite the provider when it's unset/ollama OR a prior local-mlx* default
-# (so an already-bootstrapped box on the old 27B/local-mlx default migrates too).
-provider_ok_to_overwrite = current_provider in (ollama_defaults | {"local-mlx", "local-mlx-gemma431b"})
-# Overwrite the model only when it's a known stale default (ollama ids, the
-# legacy sft base qwen3-coder-30b-a3b, or the prior 27B default). A
-# deliberately-pinned custom model is left alone (model_ok_to_overwrite False).
-stale_model_defaults = ollama_defaults | {
-    "qwen3-coder", "qwen3-coder:30b", "qwen3-coder-next", "qwen3-coder-30b-a3b",
-    os.path.expanduser("~/models/Qwen3.5-27B-4bit"), "unsloth/gemma-4-31b-it-MLX-8bit",
-}
+# Overwrite the provider when it's unset/ollama OR already local-mlx (so an
+# already-bootstrapped box with a stale local-mlx default gets migrated too).
+provider_ok_to_overwrite = current_provider in (ollama_defaults | {"local-mlx"})
+# Overwrite the model only when it's a known stale default (ollama ids or the
+# legacy sft base qwen3-coder-30b-a3b). A deliberately-pinned custom model —
+# under any provider — is left alone because model_ok_to_overwrite is False.
+stale_model_defaults = ollama_defaults | {"qwen3-coder", "qwen3-coder:30b", "qwen3-coder-next", "qwen3-coder-30b-a3b"}
 model_ok_to_overwrite = current_model in stale_model_defaults
 if not (provider_ok_to_overwrite and model_ok_to_overwrite):
     print(f"  NOTE: {path} has non-ollama defaults (provider={current_provider!r}, model={current_model!r}); leaving as-is.")

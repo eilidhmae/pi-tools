@@ -81,12 +81,12 @@ above any 64/96 box).
   falls into the conservative small-tier profile until someone certifies
   it.
 
-The arm64 install default is the Gemma-4-31B coder (`local-mlx-gemma431b`,
-`:18112`) — set by `install.sh` (override with `PI_TOOLS_KEEP_DEFAULTS=1` or an
-explicit `defaultProvider`/`defaultModel`). The tiering only governs which
-*worker* providers are added.
+The session default stays the 27B (`local-mlx`); the tiering only governs
+which *worker* providers are added. Gemma-4-31B (`local-mlx-gemma431b`) is
+provisioned as an alt coder, not the default — point a worker at it explicitly
+with `--provider local-mlx-gemma431b --model unsloth/gemma-4-31b-it-MLX-8bit`.
 
-**Thinking is off by default**, toggled per-run with `pi --thinking <level>`:
+**Gemma thinking is off by default**, toggled per-run with `pi --thinking <level>`:
 the provider's `thinkingFormat: "qwen-chat-template"` compat makes pi send
 `chat_template_kwargs.enable_thinking`. This is load-bearing — *without* it pi
 never disables Gemma's thinking, the model streams a `reasoning` channel pi
