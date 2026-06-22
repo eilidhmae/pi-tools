@@ -29,14 +29,11 @@
 #
 # Extra-models track (orthogonal to the primary tracks):
 #   Each row in server/extra-models/config.conf declares a
-#   `<short-name> <port> <hf-repo-id> [max-tokens] [draft=<hf-repo>]` row;
-#   mlx-server.sh starts one mlx_lm.server per row, pointed at the named
-#   HuggingFace cache snapshot. Tokens past the 3rd are optional and
-#   order-independent: a bare integer overrides the per-server generation
-#   ceiling (`--max-tokens`; absent → $MAX_TOKENS, default 32768), and a
-#   `draft=<hf-repo>` token names a speculative-decoding draft model served
-#   in the same process (no extra port; must be a standalone model mlx_lm can
-#   load that shares the target's tokenizer). Operators wire a matching
+#   `<short-name> <port> <hf-repo-id> [max-tokens]` row; mlx-server.sh
+#   starts one mlx_lm.server per row, pointed at the named HuggingFace
+#   cache snapshot. The 4th column is optional and overrides the
+#   per-server generation ceiling (`--max-tokens`); when absent the row
+#   inherits $MAX_TOKENS (default 32768). Operators wire a matching
 #   `local-mlx-<short-name>` provider in models.json (see
 #   server/extra-models/README.md).
 #
@@ -141,12 +138,6 @@ EXTRA_NAMES=()
 EXTRA_PORTS=()
 EXTRA_REPOS=()
 EXTRA_MAXTOK=()
-EXTRA_DRAFTS=()
-
-# Number of tokens the draft model proposes per round when a row sets a
-# draft= model (speculative decoding). mlx_lm's own default is 2; a small
-# same-family drafter usually does better a touch higher. Override per-run.
-EXTRA_NUM_DRAFT_TOKENS="${EXTRA_NUM_DRAFT_TOKENS:-3}"
 
 load_extra_config() {
   [[ -f "$EXTRA_CONF" ]] || return 0
@@ -157,26 +148,15 @@ load_extra_config() {
     [[ -z "$line" ]] && continue
     # shellcheck disable=SC2206
     cols=( $line )
-    if [[ ${#cols[@]} -lt 3 ]]; then
+    if [[ ${#cols[@]} -ne 3 && ${#cols[@]} -ne 4 ]]; then
       warn "malformed row in $EXTRA_CONF: $line"
       continue
     fi
-    # Tokens past the 3rd are optional and order-independent:
-    #   a bare integer  → per-row --max-tokens override (empty = $MAX_TOKENS default)
-    #   draft=<hf-repo> → a speculative-decoding draft model served in-process
-    local tok maxtok="" draft=""
-    for tok in "${cols[@]:3}"; do
-      case "$tok" in
-        draft=*)  draft="${tok#draft=}" ;;
-        *[!0-9]*) warn "ignoring unrecognized token '$tok' in row: $line" ;;
-        *)        maxtok="$tok" ;;
-      esac
-    done
     EXTRA_NAMES+=("${cols[0]}")
     EXTRA_PORTS+=("${cols[1]}")
     EXTRA_REPOS+=("${cols[2]}")
-    EXTRA_MAXTOK+=("$maxtok")
-    EXTRA_DRAFTS+=("$draft")
+    # 4th column (optional) is a per-row --max-tokens override; empty = default.
+    EXTRA_MAXTOK+=("${cols[3]:-}")
   done < "$EXTRA_CONF"
 }
 
@@ -305,19 +285,6 @@ extra_up() {
     die "no HF cache snapshot for $repo; run \`hf download $repo\` first."
   fi
 
-  # Optional speculative-decoding draft model (config.conf `draft=<repo>` token).
-  # Served in the SAME process — no extra port. The draft must be a standalone
-  # model mlx_lm can load and must share the target's tokenizer/vocab.
-  local draft_repo="${EXTRA_DRAFTS[$idx]:-}"
-  local draft_args=()
-  if [[ -n "$draft_repo" ]]; then
-    local draft_dir
-    if ! draft_dir=$(resolve_hf_snapshot "$draft_repo"); then
-      die "no HF cache snapshot for draft $draft_repo; run \`hf download $draft_repo\` first."
-    fi
-    draft_args=( --draft-model "$draft_dir" --num-draft-tokens "$EXTRA_NUM_DRAFT_TOKENS" )
-  fi
-
   info "${BOLD}>>> $name track${RST}"
   mkdir -p "$EXTRA_LOG_DIR" "$EXTRA_PID_DIR"
 
@@ -330,11 +297,7 @@ extra_up() {
   logfile=$(extra_log "$name")
   pidfile=$(extra_pid "$name")
 
-  if [[ -n "$draft_repo" ]]; then
-    info "  port=$port  model=$model_dir  max-tokens=$max_tokens  draft=$draft_dir  num-draft-tokens=$EXTRA_NUM_DRAFT_TOKENS"
-  else
-    info "  port=$port  model=$model_dir  max-tokens=$max_tokens"
-  fi
+  info "  port=$port  model=$model_dir  max-tokens=$max_tokens"
   nohup "$MLX_SERVER_BIN" \
       --model "$model_dir" \
       --port "$port" \
@@ -342,7 +305,6 @@ extra_up() {
       --max-tokens "$max_tokens" \
       --prompt-cache-size 16 \
       --prompt-cache-bytes 2147483648 \
-      ${draft_args[@]+"${draft_args[@]}"} \
       >"$logfile" 2>&1 &
   echo $! > "$pidfile"
   if wait_listening "$port" "$(cat "$pidfile")" "$logfile"; then

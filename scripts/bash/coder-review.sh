@@ -67,7 +67,7 @@ if [[ "$(uname -m)" != "arm64" && "$(uname -m)" != "aarch64" ]]; then
   echo "       container-harness guest forwarding to the host MLX backends." >&2
   exit 2
 fi
-CODER_TIER="${PI_CODER_TIER:-large}"
+CODER_TIER="${PI_CODER_TIER:-gemma}"
 CODER_THINKING="${PI_CODER_THINKING:-off}"   # 27B path; effective only via the coder27b qwen-chat-template compat (see header). The small plan payload is the real runaway guard, not this flag.
 
 # Resolve provider/model/port from the tier unless explicitly overridden.

@@ -87,7 +87,7 @@ if [[ "$(uname -m)" != "arm64" && "$(uname -m)" != "aarch64" ]]; then
   echo "       backends are served only there." >&2
   exit 2
 fi
-CODER_TIER="${PI_CODER_TIER:-large}"
+CODER_TIER="${PI_CODER_TIER:-gemma}"
 # Thinking level for the small/27B Coder path only (pi levels: off|minimal|low|
 # medium|high|xhigh). Default OFF: the RPI Implementor is an executor — the
 # deliberation is front-loaded into the (thinking) Planner — and thinking-off
