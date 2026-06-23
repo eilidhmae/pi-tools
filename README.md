@@ -134,6 +134,9 @@ Workstation-specific config: point `PI_EXTRA_CONF` at a checkout-local
 config file (e.g. a wrapper in your dotfiles) to keep per-workstation
 model choices out of the pi-tools tree.
 
+Full operator env-var reference (serving, tiers, adversary/quorum,
+hooks, install/bootstrap): [`server/ENVIRONMENT.md`](server/ENVIRONMENT.md).
+
 ## Git hooks (this repo)
 
 `hooks/` contains pre-commit, post-commit, and pre-push hooks that gate

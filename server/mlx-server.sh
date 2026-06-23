@@ -37,6 +37,19 @@
 #   `local-mlx-<short-name>` provider in models.json (see
 #   server/extra-models/README.md).
 #
+#   MTP speculative-decoding draft (opt-in, per row, via env):
+#     Set MLX_MTP_DRAFT_<NAME>=<hf-repo> (NAME = the row short-name
+#     upper-cased, non-alnum -> _) to launch that row with an MTP draft
+#     head served in the SAME process (no extra port):
+#       --draft-model <repo> --num-draft-tokens $MLX_MTP_NUM_DRAFT_TOKENS (3)
+#     This is OFF by default: a bare `mlx-server.sh up <name>` launches the
+#     plain server with no draft. The draft head must be an MTP head whose
+#     mlx_lm model class owns no KV cache (e.g. gemma4_assistant); the
+#     venv mlx_lm.server has the target-only-prompt-cache fix that makes
+#     such a head loadable as a draft. This is deliberately NOT the removed
+#     standalone-draft `draft=` config token (that tripped a Metal GPU
+#     command-buffer timeout under agentic prompts; PR #33).
+#
 # Usage:
 #   ./mlx-server.sh up                    # start thinking + all configured extras
 #   ./mlx-server.sh up thinking|sft|judge # start one named track
@@ -139,6 +152,52 @@ EXTRA_PORTS=()
 EXTRA_REPOS=()
 EXTRA_MAXTOK=()
 
+# Number of tokens the MTP draft head proposes per verification round when a
+# row opts in to a draft (MLX_MTP_DRAFT_<NAME>). mlx_lm's own default is 2.
+# Measured on this M5 Max (gemma4 31B-8bit target + bf16 head): agentic
+# throughput peaks at 2 (~1.56x over no-draft), predictable keeps climbing to 4
+# (~1.96x); 2 is the best all-round value for the agentic coder/adversary role
+# and beats 3 on both classes. Override per-run for predictable-heavy workloads.
+MLX_MTP_NUM_DRAFT_TOKENS="${MLX_MTP_NUM_DRAFT_TOKENS:-2}"
+
+# Built-in default MTP draft head per row. Rows listed here run the draft ON by
+# default (a bare `up <name>` launches with it); rows not listed stay off unless
+# MLX_MTP_DRAFT_<NAME> names a repo. This is the default-on policy.
+mtp_default_draft_for() {
+  case "$1" in
+    gemma431b) printf '%s' "mlx-community/gemma-4-31B-it-assistant-bf16" ;;
+  esac
+}
+
+# Echo the MTP draft HF repo for row $1, or nothing if the row runs no draft.
+# Precedence: global off > per-row off token > per-row repo override > built-in
+# default. NAME = short-name upper-cased, non-alnum -> '_'.
+#
+# Off-switches:
+#   - global:  MLX_MTP_DRAFT_DISABLE truthy (1/true/yes/on) force-disables the
+#              draft for EVERY row, beating any per-row value or built-in default.
+#   - per-row: MLX_MTP_DRAFT_<NAME> set to an explicit off token
+#              (off/0/no/none/false, case-insensitive) disables just that row,
+#              overriding its built-in default.
+# Empty/unset now falls through to the built-in default, so a row with one runs
+# the draft ON unless explicitly turned off.
+mtp_draft_repo_for() {
+  local name="$1" var val
+  case "$(printf '%s' "${MLX_MTP_DRAFT_DISABLE:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) return 0 ;;   # global kill-switch
+  esac
+  var="MLX_MTP_DRAFT_$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')"
+  val="${!var:-}"
+  case "$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')" in
+    off|0|no|none|false) return 0 ;;   # explicit per-row off
+  esac
+  if [[ -n "$val" ]]; then
+    printf '%s' "$val"             # explicit per-row repo override
+  else
+    mtp_default_draft_for "$name"  # unset -> row's built-in default (default-ON)
+  fi
+}
+
 load_extra_config() {
   [[ -f "$EXTRA_CONF" ]] || return 0
   local line cols
@@ -189,6 +248,37 @@ extra_url() { local idx; idx=$(extra_idx "$1") || return 1; echo "http://localho
 extra_pid_alive() {
   local pidfile; pidfile=$(extra_pid "$1")
   [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null
+}
+
+pid_on_port() {
+  # Echo the PID LISTENing on TCP port $1, or nothing. Used as a pidfile-loss
+  # fallback so `down`/`up`/`status` can reconcile a server this script did not
+  # start (hand-launched) or whose pidfile vanished across a crash.
+  lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1
+}
+
+is_mlx_server_pid() {
+  # True if PID $1's command line is one of our mlx_lm servers. Guards the
+  # port fallback so we never kill an unrelated program holding the port.
+  # Matches `mlx_lm.server` (bin / `-m mlx_lm.server`) and `python -m mlx_lm
+  # server` as CONTIGUOUS substrings, so an unrelated process that merely has
+  # `mlx_lm` and `server` apart in its argv is not mistaken for ours.
+  local pid="$1" cmd
+  cmd="$(ps -p "$pid" -o command= 2>/dev/null)" || return 1
+  [[ "$cmd" == *mlx_lm.server* || "$cmd" == *"mlx_lm server"* ]]
+}
+
+extra_running() {
+  # True if the row's server is up: a live recorded PID, OR an mlx_lm.server
+  # holding the row's port (pidfile lost / hand-launched). Port-aware so `up`
+  # won't start a duplicate that fails to bind, and `status` reports reality.
+  local name="$1"
+  if extra_pid_alive "$name"; then return 0; fi
+  local idx port
+  idx=$(extra_idx "$name") || return 1
+  port="${EXTRA_PORTS[$idx]}"
+  local lpid; lpid="$(pid_on_port "$port")"
+  [[ -n "$lpid" ]] && is_mlx_server_pid "$lpid"
 }
 
 # --- preconditions ----------------------------------------------------------
@@ -265,6 +355,19 @@ judge_down() {
 
 # --- extra-models track (one per config row) -------------------------------
 
+# Fire one tolerated generation through the (cold) MTP draft path so the first
+# real request never eats the cold-load Metal GPU command-buffer timeout (warm
+# requests are clean; the cold first speculative request is the one that can die).
+# 127.0.0.1 reaches the server regardless of HOST (0.0.0.0 or loopback). Returns
+# 0 on a clean response; non-zero if the process dies mid-request.
+mtp_warmup_request() {
+  local port="$1" model="$2"
+  curl -sS -m 180 "http://127.0.0.1:$port/v1/chat/completions" \
+    -H 'Content-Type: application/json' \
+    -d "{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"warmup\"}],\"max_tokens\":16,\"temperature\":0}" \
+    >/dev/null 2>&1
+}
+
 extra_up() {
   local name="$1"
   local idx
@@ -285,11 +388,26 @@ extra_up() {
     die "no HF cache snapshot for $repo; run \`hf download $repo\` first."
   fi
 
+  # MTP speculative-decoding draft (mtp_draft_repo_for). Served in the SAME
+  # process — no extra port. The head must be an MTP class mlx_lm can load that
+  # shares the target's tokenizer/vocab (e.g. gemma4_assistant). Rows with a
+  # built-in default run it ON (gemma431b); others off unless MLX_MTP_DRAFT_<NAME>
+  # names a repo. Not the removed standalone-draft `draft=` config token.
+  local draft_repo draft_dir
+  local draft_args=()
+  draft_repo="$(mtp_draft_repo_for "$name")"
+  if [[ -n "$draft_repo" ]]; then
+    if ! draft_dir=$(resolve_hf_snapshot "$draft_repo"); then
+      die "no HF cache snapshot for MTP draft $draft_repo; run \`hf download $draft_repo\` first."
+    fi
+    draft_args=( --draft-model "$draft_dir" --num-draft-tokens "$MLX_MTP_NUM_DRAFT_TOKENS" )
+  fi
+
   info "${BOLD}>>> $name track${RST}"
   mkdir -p "$EXTRA_LOG_DIR" "$EXTRA_PID_DIR"
 
-  if extra_pid_alive "$name"; then
-    info "  already running (pid $(cat "$(extra_pid "$name")")); stopping first"
+  if extra_running "$name"; then
+    info "  already running on :$port; stopping first"
     extra_down_inner "$name"
   fi
 
@@ -297,37 +415,90 @@ extra_up() {
   logfile=$(extra_log "$name")
   pidfile=$(extra_pid "$name")
 
-  info "  port=$port  model=$model_dir  max-tokens=$max_tokens"
-  nohup "$MLX_SERVER_BIN" \
-      --model "$model_dir" \
-      --port "$port" \
-      --host "$HOST" \
-      --max-tokens "$max_tokens" \
-      --prompt-cache-size 16 \
-      --prompt-cache-bytes 2147483648 \
-      >"$logfile" 2>&1 &
-  echo $! > "$pidfile"
-  if wait_listening "$port" "$(cat "$pidfile")" "$logfile"; then
-    info "  ${GRN}up${RST} (pid $(cat "$pidfile"))  listening=$HOST:$port"
+  if [[ -n "$draft_repo" ]]; then
+    info "  port=$port  model=$model_dir  max-tokens=$max_tokens  mtp-draft=$draft_dir  num-draft-tokens=$MLX_MTP_NUM_DRAFT_TOKENS"
   else
-    die "$name failed to start; tail $logfile"
+    info "  port=$port  model=$model_dir  max-tokens=$max_tokens"
   fi
+  local start_attempt max_start_attempts=3
+  : >"$logfile"   # fresh log for this `up`; retry attempts append below so a
+                  # multi-attempt cold-load failure keeps every attempt's output.
+  for start_attempt in $(seq 1 "$max_start_attempts"); do
+    printf '=== %s launch attempt %s/%s ===\n' "$name" "$start_attempt" "$max_start_attempts" >>"$logfile"
+    nohup "$MLX_SERVER_BIN" \
+        --model "$model_dir" \
+        --port "$port" \
+        --host "$HOST" \
+        --max-tokens "$max_tokens" \
+        --prompt-cache-size 16 \
+        --prompt-cache-bytes 2147483648 \
+        ${draft_args[@]+"${draft_args[@]}"} \
+        >>"$logfile" 2>&1 &
+    echo $! > "$pidfile"
+    if ! wait_listening "$port" "$(cat "$pidfile")" "$logfile"; then
+      die "$name failed to start; tail $logfile"
+    fi
+    # No MTP draft head: nothing to warm.
+    if [[ -z "$draft_repo" ]]; then
+      info "  ${GRN}up${RST} (pid $(cat "$pidfile"))  listening=$HOST:$port"
+      return 0
+    fi
+    # MTP draft: warm the cold draft path once (see mtp_warmup_request). If the
+    # warm-up itself trips the Metal timeout (process dies), restart and retry.
+    info "  warming MTP draft path (attempt $start_attempt/$max_start_attempts)..."
+    if mtp_warmup_request "$port" "$model_dir" && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+      info "  ${GRN}up${RST} (pid $(cat "$pidfile"))  listening=$HOST:$port  mtp-draft warm"
+      return 0
+    fi
+    if kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+      warn "  warm-up request failed but server is alive — continuing unwarmed"
+      info "  ${GRN}up${RST} (pid $(cat "$pidfile"))  listening=$HOST:$port"
+      return 0
+    fi
+    warn "  draft server died during cold warm-up (likely Metal GPU timeout); restarting ($start_attempt/$max_start_attempts)"
+    rm -f "$pidfile"
+  done
+  die "$name draft server kept dying during cold warm-up after $max_start_attempts attempts; tail $logfile"
 }
 
 extra_down_inner() {
   local name="$1"
   local pidfile; pidfile=$(extra_pid "$name")
-  [[ -f "$pidfile" ]] || return 0
-  local pid; pid="$(cat "$pidfile")"
-  if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null || true
-    local i
-    for i in 1 2 3 4 5; do
-      kill -0 "$pid" 2>/dev/null || break
-      sleep 0.5
-    done
-    kill -9 "$pid" 2>/dev/null || true
+
+  # Build the kill list from two sources so a server is reaped even when the
+  # pidfile is absent (hand-launched, or lost across a crash):
+  #   1. the recorded pidfile PID (if any), and
+  #   2. whatever mlx_lm.server currently LISTENs on the row's port.
+  # The port fallback is gated on is_mlx_server_pid so we never signal an
+  # unrelated process that happens to hold the port.
+  local pids=()
+  if [[ -f "$pidfile" ]]; then
+    local fpid; fpid="$(cat "$pidfile" 2>/dev/null)"
+    [[ -n "$fpid" ]] && pids+=("$fpid")
   fi
+  local idx port lpid
+  if idx=$(extra_idx "$name"); then
+    port="${EXTRA_PORTS[$idx]}"
+    lpid="$(pid_on_port "$port")"
+    if [[ -n "$lpid" ]] && is_mlx_server_pid "$lpid"; then
+      pids+=("$lpid")
+    fi
+  fi
+
+  # De-dup, then TERM → wait → KILL each live PID.
+  local seen=" " pid i
+  for pid in ${pids[@]+"${pids[@]}"}; do
+    [[ "$seen" == *" $pid "* ]] && continue
+    seen+="$pid "
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      for i in 1 2 3 4 5 6 7 8 9 10; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.5
+      done
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  done
   rm -f "$pidfile"
 }
 
@@ -474,9 +645,11 @@ cmd_status() {
     info ""
     info "${BOLD}$name health:${RST}"
     if extra_pid_alive "$name"; then
-      info "  pid $(cat "$(extra_pid "$name")") alive"
+      info "  pid $(cat "$(extra_pid "$name")") alive (tracked)"
+    elif extra_running "$name"; then
+      info "  pid $(pid_on_port "${EXTRA_PORTS[$i]}") alive on :${EXTRA_PORTS[$i]} (untracked — not started by this script; \`down $name\` will still stop it)"
     else
-      warn "  no $name pid"
+      warn "  no $name listener"
     fi
     if curl -sS -m 3 "$url/v1/models" 2>/dev/null | jq -C '.data[0].id' 2>/dev/null; then
       :

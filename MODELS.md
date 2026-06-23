@@ -93,6 +93,9 @@ launch on it unless `--model` says otherwise. The **role-worker defaults** on
   default to gemma431b. `PI_ADVERSARY_MODEL` + `--provider/--model` override
   (e.g. the 27B on `local-mlx` for <128GB hosts).
 
+These tier/adversary knobs and every other operator env var are catalogued
+in [`server/ENVIRONMENT.md`](server/ENVIRONMENT.md).
+
 Benchmarked 2026-06-21 (`tooling/bench/` in my-macbook): gemma431b is 3/3 on
 the coder TDD tasks and **4/4 planted bugs / 0 false positives** as a
 thinking-off adversary (~3s/file).
