@@ -153,9 +153,12 @@ EXTRA_REPOS=()
 EXTRA_MAXTOK=()
 
 # Number of tokens the MTP draft head proposes per verification round when a
-# row opts in to a draft (MLX_MTP_DRAFT_<NAME>). mlx_lm's own default is 2; the
-# gemma4 MTP head measured best a touch higher. Override per-run.
-MLX_MTP_NUM_DRAFT_TOKENS="${MLX_MTP_NUM_DRAFT_TOKENS:-3}"
+# row opts in to a draft (MLX_MTP_DRAFT_<NAME>). mlx_lm's own default is 2.
+# Measured on this M5 Max (gemma4 31B-8bit target + bf16 head): agentic
+# throughput peaks at 2 (~1.56x over no-draft), predictable keeps climbing to 4
+# (~1.96x); 2 is the best all-round value for the agentic coder/adversary role
+# and beats 3 on both classes. Override per-run for predictable-heavy workloads.
+MLX_MTP_NUM_DRAFT_TOKENS="${MLX_MTP_NUM_DRAFT_TOKENS:-2}"
 
 # Echo the MTP draft HF repo opted-in for row $1 via MLX_MTP_DRAFT_<NAME>, or
 # nothing. NAME = short-name upper-cased with non-alnum mapped to '_'.
@@ -243,10 +246,12 @@ pid_on_port() {
 is_mlx_server_pid() {
   # True if PID $1's command line is one of our mlx_lm servers. Guards the
   # port fallback so we never kill an unrelated program holding the port.
-  # Matches both `mlx_lm.server` (bin) and `python -m mlx_lm server`.
+  # Matches `mlx_lm.server` (bin / `-m mlx_lm.server`) and `python -m mlx_lm
+  # server` as CONTIGUOUS substrings, so an unrelated process that merely has
+  # `mlx_lm` and `server` apart in its argv is not mistaken for ours.
   local pid="$1" cmd
   cmd="$(ps -p "$pid" -o command= 2>/dev/null)" || return 1
-  [[ "$cmd" == *mlx_lm* && "$cmd" == *server* ]]
+  [[ "$cmd" == *mlx_lm.server* || "$cmd" == *"mlx_lm server"* ]]
 }
 
 extra_running() {

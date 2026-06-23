@@ -164,7 +164,7 @@ see §1 `HOST`. There is no separate container-only port var.)
 
 ---
 
-## 9. Branch-specific (gemma431b-mtp-draft only — NOT on main)
+## 9. MTP speculative-decode draft (gemma431b; opt-in)
 
 Added by commit `1ee61de` ("gemma431b: opt-in MTP speculative-decode
 draft via env") on branch `gemma431b-mtp-draft`; the off-switches below
@@ -174,10 +174,10 @@ port + explicit MTP draft off-switches"). Off by default; a bare
 
 | Var | Controls | Default | Values | Consumed at |
 |-----|----------|---------|--------|-------------|
-| `MLX_MTP_DRAFT_<NAME>` | Opt a given extra-models row into an MTP speculative-decode draft head, served in the same process. `<NAME>` = the row short-name upper-cased, non-alnum → `_` (e.g. `MLX_MTP_DRAFT_GEMMA431B`). An explicit off token disables just that row even if a wrapper exported a default repo | unset (no draft) | HF repo of an MTP draft head, e.g. `mlx-community/gemma-4-31B-it-assistant-bf16`; or an off token (`off`/`0`/`no`/`none`/`false`, case-insensitive — empty/unset is likewise off) | `server/mlx-server.sh:176` (dynamic `${!var}` in `mtp_draft_repo_for`), off tokens at :178-180, used at :365 |
+| `MLX_MTP_DRAFT_<NAME>` | Opt a given extra-models row into an MTP speculative-decode draft head, served in the same process. `<NAME>` = the row short-name upper-cased, non-alnum → `_` (e.g. `MLX_MTP_DRAFT_GEMMA431B`). An explicit off token disables just that row even if a wrapper exported a default repo | unset (no draft) | HF repo of an MTP draft head, e.g. `mlx-community/gemma-4-31B-it-assistant-bf16`; or an off token (`off`/`0`/`no`/`none`/`false`, case-insensitive — empty/unset is likewise off) | `server/mlx-server.sh:180` (dynamic `${!var}` in `mtp_draft_repo_for`), off tokens at :182, used at :370 |
 | `MLX_MTP_DRAFT_GEMMA431B` | The concrete instance documented for the gemma431b row | unset | `mlx-community/gemma-4-31B-it-assistant-bf16`, or an off token (as above) | resolved via the `MLX_MTP_DRAFT_<NAME>` mechanism above |
-| `MLX_MTP_DRAFT_DISABLE` | Global kill-switch: force-disables the MTP draft for **every** row, beating any per-row `MLX_MTP_DRAFT_<NAME>` value. The one knob to turn the whole feature off | unset (drafts follow per-row settings) | truthy `1`/`true`/`yes`/`on` (case-insensitive) disables all; anything else is ignored | `server/mlx-server.sh:173-175` (checked first in `mtp_draft_repo_for`) |
-| `MLX_MTP_NUM_DRAFT_TOKENS` | `--num-draft-tokens` the MTP draft head proposes per verification round when a row opts in | `3` (mlx_lm's own default is 2) | integer | `server/mlx-server.sh:158`, used at :370 |
+| `MLX_MTP_DRAFT_DISABLE` | Global kill-switch: force-disables the MTP draft for **every** row, beating any per-row `MLX_MTP_DRAFT_<NAME>` value. The one knob to turn the whole feature off | unset (drafts follow per-row settings) | truthy `1`/`true`/`yes`/`on` (case-insensitive) disables all; anything else is ignored | `server/mlx-server.sh:176-177` (checked first in `mtp_draft_repo_for`) |
+| `MLX_MTP_NUM_DRAFT_TOKENS` | `--num-draft-tokens` the MTP draft head proposes per verification round when a row opts in | `2` (was 3; measured best for the agentic role on this M5 Max — mlx_lm's own default is 2) | integer | `server/mlx-server.sh:161`, used at :375 |
 
 ---
 
