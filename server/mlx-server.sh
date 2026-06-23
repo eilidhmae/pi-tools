@@ -159,10 +159,26 @@ MLX_MTP_NUM_DRAFT_TOKENS="${MLX_MTP_NUM_DRAFT_TOKENS:-3}"
 
 # Echo the MTP draft HF repo opted-in for row $1 via MLX_MTP_DRAFT_<NAME>, or
 # nothing. NAME = short-name upper-cased with non-alnum mapped to '_'.
+#
+# Off-switches (matter once a row defaults the draft ON):
+#   - global:  MLX_MTP_DRAFT_DISABLE=1 (also 0? no — any non-empty truthy:
+#              1/true/yes/on) force-disables the draft for EVERY row, beating
+#              any per-row value. The one knob to turn the whole feature off.
+#   - per-row: set MLX_MTP_DRAFT_<NAME> to an explicit off token
+#              (off/0/no/none/false, case-insensitive) to disable just that row
+#              even if some wrapper exports a default repo. Empty/unset is also
+#              off (the original behaviour).
 mtp_draft_repo_for() {
-  local name="$1" var
+  local name="$1" var val
+  case "$(printf '%s' "${MLX_MTP_DRAFT_DISABLE:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) return 0 ;;   # global kill-switch
+  esac
   var="MLX_MTP_DRAFT_$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')"
-  printf '%s' "${!var:-}"
+  val="${!var:-}"
+  case "$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')" in
+    ""|off|0|no|none|false) return 0 ;;   # explicit per-row off
+  esac
+  printf '%s' "$val"
 }
 
 load_extra_config() {
@@ -215,6 +231,35 @@ extra_url() { local idx; idx=$(extra_idx "$1") || return 1; echo "http://localho
 extra_pid_alive() {
   local pidfile; pidfile=$(extra_pid "$1")
   [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null
+}
+
+pid_on_port() {
+  # Echo the PID LISTENing on TCP port $1, or nothing. Used as a pidfile-loss
+  # fallback so `down`/`up`/`status` can reconcile a server this script did not
+  # start (hand-launched) or whose pidfile vanished across a crash.
+  lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1
+}
+
+is_mlx_server_pid() {
+  # True if PID $1's command line is one of our mlx_lm servers. Guards the
+  # port fallback so we never kill an unrelated program holding the port.
+  # Matches both `mlx_lm.server` (bin) and `python -m mlx_lm server`.
+  local pid="$1" cmd
+  cmd="$(ps -p "$pid" -o command= 2>/dev/null)" || return 1
+  [[ "$cmd" == *mlx_lm* && "$cmd" == *server* ]]
+}
+
+extra_running() {
+  # True if the row's server is up: a live recorded PID, OR an mlx_lm.server
+  # holding the row's port (pidfile lost / hand-launched). Port-aware so `up`
+  # won't start a duplicate that fails to bind, and `status` reports reality.
+  local name="$1"
+  if extra_pid_alive "$name"; then return 0; fi
+  local idx port
+  idx=$(extra_idx "$name") || return 1
+  port="${EXTRA_PORTS[$idx]}"
+  local lpid; lpid="$(pid_on_port "$port")"
+  [[ -n "$lpid" ]] && is_mlx_server_pid "$lpid"
 }
 
 # --- preconditions ----------------------------------------------------------
@@ -328,8 +373,8 @@ extra_up() {
   info "${BOLD}>>> $name track${RST}"
   mkdir -p "$EXTRA_LOG_DIR" "$EXTRA_PID_DIR"
 
-  if extra_pid_alive "$name"; then
-    info "  already running (pid $(cat "$(extra_pid "$name")")); stopping first"
+  if extra_running "$name"; then
+    info "  already running on :$port; stopping first"
     extra_down_inner "$name"
   fi
 
@@ -362,17 +407,41 @@ extra_up() {
 extra_down_inner() {
   local name="$1"
   local pidfile; pidfile=$(extra_pid "$name")
-  [[ -f "$pidfile" ]] || return 0
-  local pid; pid="$(cat "$pidfile")"
-  if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null || true
-    local i
-    for i in 1 2 3 4 5; do
-      kill -0 "$pid" 2>/dev/null || break
-      sleep 0.5
-    done
-    kill -9 "$pid" 2>/dev/null || true
+
+  # Build the kill list from two sources so a server is reaped even when the
+  # pidfile is absent (hand-launched, or lost across a crash):
+  #   1. the recorded pidfile PID (if any), and
+  #   2. whatever mlx_lm.server currently LISTENs on the row's port.
+  # The port fallback is gated on is_mlx_server_pid so we never signal an
+  # unrelated process that happens to hold the port.
+  local pids=()
+  if [[ -f "$pidfile" ]]; then
+    local fpid; fpid="$(cat "$pidfile" 2>/dev/null)"
+    [[ -n "$fpid" ]] && pids+=("$fpid")
   fi
+  local idx port lpid
+  if idx=$(extra_idx "$name"); then
+    port="${EXTRA_PORTS[$idx]}"
+    lpid="$(pid_on_port "$port")"
+    if [[ -n "$lpid" ]] && is_mlx_server_pid "$lpid"; then
+      pids+=("$lpid")
+    fi
+  fi
+
+  # De-dup, then TERM → wait → KILL each live PID.
+  local seen=" " pid i
+  for pid in ${pids[@]+"${pids[@]}"}; do
+    [[ "$seen" == *" $pid "* ]] && continue
+    seen+="$pid "
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      for i in 1 2 3 4 5 6 7 8 9 10; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.5
+      done
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  done
   rm -f "$pidfile"
 }
 
@@ -519,9 +588,11 @@ cmd_status() {
     info ""
     info "${BOLD}$name health:${RST}"
     if extra_pid_alive "$name"; then
-      info "  pid $(cat "$(extra_pid "$name")") alive"
+      info "  pid $(cat "$(extra_pid "$name")") alive (tracked)"
+    elif extra_running "$name"; then
+      info "  pid $(pid_on_port "${EXTRA_PORTS[$i]}") alive on :${EXTRA_PORTS[$i]} (untracked — not started by this script; \`down $name\` will still stop it)"
     else
-      warn "  no $name pid"
+      warn "  no $name listener"
     fi
     if curl -sS -m 3 "$url/v1/models" 2>/dev/null | jq -C '.data[0].id' 2>/dev/null; then
       :
