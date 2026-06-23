@@ -37,6 +37,19 @@
 #   `local-mlx-<short-name>` provider in models.json (see
 #   server/extra-models/README.md).
 #
+#   MTP speculative-decoding draft (opt-in, per row, via env):
+#     Set MLX_MTP_DRAFT_<NAME>=<hf-repo> (NAME = the row short-name
+#     upper-cased, non-alnum -> _) to launch that row with an MTP draft
+#     head served in the SAME process (no extra port):
+#       --draft-model <repo> --num-draft-tokens $MLX_MTP_NUM_DRAFT_TOKENS (3)
+#     This is OFF by default: a bare `mlx-server.sh up <name>` launches the
+#     plain server with no draft. The draft head must be an MTP head whose
+#     mlx_lm model class owns no KV cache (e.g. gemma4_assistant); the
+#     venv mlx_lm.server has the target-only-prompt-cache fix that makes
+#     such a head loadable as a draft. This is deliberately NOT the removed
+#     standalone-draft `draft=` config token (that tripped a Metal GPU
+#     command-buffer timeout under agentic prompts; PR #33).
+#
 # Usage:
 #   ./mlx-server.sh up                    # start thinking + all configured extras
 #   ./mlx-server.sh up thinking|sft|judge # start one named track
@@ -138,6 +151,19 @@ EXTRA_NAMES=()
 EXTRA_PORTS=()
 EXTRA_REPOS=()
 EXTRA_MAXTOK=()
+
+# Number of tokens the MTP draft head proposes per verification round when a
+# row opts in to a draft (MLX_MTP_DRAFT_<NAME>). mlx_lm's own default is 2; the
+# gemma4 MTP head measured best a touch higher. Override per-run.
+MLX_MTP_NUM_DRAFT_TOKENS="${MLX_MTP_NUM_DRAFT_TOKENS:-3}"
+
+# Echo the MTP draft HF repo opted-in for row $1 via MLX_MTP_DRAFT_<NAME>, or
+# nothing. NAME = short-name upper-cased with non-alnum mapped to '_'.
+mtp_draft_repo_for() {
+  local name="$1" var
+  var="MLX_MTP_DRAFT_$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')"
+  printf '%s' "${!var:-}"
+}
 
 load_extra_config() {
   [[ -f "$EXTRA_CONF" ]] || return 0
@@ -285,6 +311,20 @@ extra_up() {
     die "no HF cache snapshot for $repo; run \`hf download $repo\` first."
   fi
 
+  # Opt-in MTP speculative-decoding draft (env MLX_MTP_DRAFT_<NAME>). Served in
+  # the SAME process — no extra port. The head must be an MTP class mlx_lm can
+  # load that shares the target's tokenizer/vocab (e.g. gemma4_assistant). OFF
+  # by default; not the removed standalone-draft `draft=` config token.
+  local draft_repo draft_dir
+  local draft_args=()
+  draft_repo="$(mtp_draft_repo_for "$name")"
+  if [[ -n "$draft_repo" ]]; then
+    if ! draft_dir=$(resolve_hf_snapshot "$draft_repo"); then
+      die "no HF cache snapshot for MTP draft $draft_repo; run \`hf download $draft_repo\` first."
+    fi
+    draft_args=( --draft-model "$draft_dir" --num-draft-tokens "$MLX_MTP_NUM_DRAFT_TOKENS" )
+  fi
+
   info "${BOLD}>>> $name track${RST}"
   mkdir -p "$EXTRA_LOG_DIR" "$EXTRA_PID_DIR"
 
@@ -297,7 +337,11 @@ extra_up() {
   logfile=$(extra_log "$name")
   pidfile=$(extra_pid "$name")
 
-  info "  port=$port  model=$model_dir  max-tokens=$max_tokens"
+  if [[ -n "$draft_repo" ]]; then
+    info "  port=$port  model=$model_dir  max-tokens=$max_tokens  mtp-draft=$draft_dir  num-draft-tokens=$MLX_MTP_NUM_DRAFT_TOKENS"
+  else
+    info "  port=$port  model=$model_dir  max-tokens=$max_tokens"
+  fi
   nohup "$MLX_SERVER_BIN" \
       --model "$model_dir" \
       --port "$port" \
@@ -305,6 +349,7 @@ extra_up() {
       --max-tokens "$max_tokens" \
       --prompt-cache-size 16 \
       --prompt-cache-bytes 2147483648 \
+      ${draft_args[@]+"${draft_args[@]}"} \
       >"$logfile" 2>&1 &
   echo $! > "$pidfile"
   if wait_listening "$port" "$(cat "$pidfile")" "$logfile"; then
