@@ -42,22 +42,29 @@
  * `<tool_call>{json}</tool_call>` / `<tools>` / bare-JSON for the dense 32B. The
  * two extensions are scoped to disjoint providers and do not interact.
  *
- * Mechanism (mirrors qwen25coder-toolcall, including the hang-safety lesson):
- * override each target provider with a `streamSimple` that delegates to the real
- * openai-completions backend, streams its events through live, and on the
- * terminal `done` — only when the backend produced no structured tool call but a
- * text/thinking block contains a complete `<function=…>` call — rewrites the
- * message into proper `toolCall` blocks and emits a dispatch-correct toolcall
- * event sequence. Every other turn is a pass-through (fast-path: a block must
- * literally contain `<function=` to be considered).
+ * Mechanism (mirrors qwen25coder-toolcall `ca0cd28`): a `message_end` hook. When
+ * a target-provider assistant turn finishes with no structured tool call but a
+ * text/thinking block holds a complete `<function=…>` call, recover the FIRST
+ * call, rebuild the content with that call stripped + a hand-built `toolCall`
+ * block, and return it with `stopReason: "toolUse"` so pi dispatches it and
+ * continues the loop. Every other turn is a strict no-op (fast path: a block
+ * must literally contain `<function=`).
+ *
+ * An earlier version registered a provider override with a custom `streamSimple`
+ * and a runtime `require("@earendil-works/pi-ai")`. It never reliably fired
+ * (openai-completions models route to the built-in handler, bypassing the
+ * override) and, because it overrode `local-mlx` (the default 27B session
+ * provider), the require()'s `ERR_PACKAGE_PATH_NOT_EXPORTED` on the ESM-only
+ * package threw on every query, driving pi into a tight error-retry loop that
+ * OOM'd the node heap. `message_end` needs only the `pi` object — no pi-ai, no
+ * provider registration. See the runtime-wiring note below.
  *
  * Strict no-op for any provider not listed in TARGET_PROVIDERS, and for any turn
  * whose model already produced a structured tool call.
  *
  * Pure core (extractFunctionCalls + repairContent) has no external imports so it
- * is node-testable via `node --experimental-strip-types`. The pi-ai runtime is
- * loaded with require() inside the handler, which the type-strip loader does not
- * resolve, so the test imports only the pure functions.
+ * is node-testable via `node --experimental-strip-types`; the test imports only
+ * those pure functions.
  *
  * Test: node --experimental-strip-types extensions/xml-function-toolcall.test.ts
  */
@@ -185,170 +192,70 @@ export function repairContent(content: any[]): RepairResult {
 }
 
 // ---------------------------------------------------------------------------
-// Runtime wiring. Mirrors qwen25coder-toolcall: a provider override returning an
-// AssistantMessageEventStream (push/end/result), NOT a bare async generator —
-// pi awaits stream.result() in parallel with draining, so a generator (no
-// result()) hangs and leaks. Imports pi-ai via require() so the pure core stays
-// node-testable.
+// Runtime wiring: a `message_end` hook (replaces the old `streamSimple` provider
+// override — see qwen25coder-toolcall.ts `ca0cd28` for the same fix).
+//
+// Why the override was wrong, twice over:
+//   1. It never reliably fired — a model whose `api` is "openai-completions"
+//      routes to the built-in handler, bypassing a registered provider's
+//      `streamSimple`.
+//   2. It reached into `@earendil-works/pi-ai` via a runtime `require()`, which
+//      throws `ERR_PACKAGE_PATH_NOT_EXPORTED` on the ESM-only package. Because
+//      this extension overrode `local-mlx` (the default 27B session provider),
+//      that throw happened on EVERY query — even a bare "hello" — and pi retried
+//      in a tight loop, piling up Error objects + stack traces until the node
+//      heap OOM'd, silently (no output, no request ever reaching the server).
+//      Root-caused 2026-06-22.
+//
+// `message_end` sidesteps both: it always fires for the finished assistant
+// message and needs only the `pi` object — no pi-ai, no provider registration,
+// no models.json read. The toolCall block is built by hand:
+// {type:"toolCall", id, name, arguments}.
 // ---------------------------------------------------------------------------
 
-function makeId(seq: number): string {
-  return `xmlfn_${Date.now().toString(36)}_${seq}`;
-}
-
-function emptyUsage() {
-  return {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-}
-
-/** Register the repair override for a single provider, reusing its models.json config. */
-function registerRepair(pi: any, providerName: string): boolean {
-  let providerCfg: any;
-  try {
-    const { readFileSync } = require("node:fs");
-    const { homedir } = require("node:os");
-    const { join } = require("node:path");
-    const dir = process.env.PI_CODING_AGENT_DIR?.trim()
-      ? process.env.PI_CODING_AGENT_DIR.replace(/^~(?=$|\/)/, homedir())
-      : join(homedir(), ".pi", "agent");
-    const parsed = JSON.parse(readFileSync(join(dir, "models.json"), "utf8"));
-    providerCfg = parsed?.providers?.[providerName];
-  } catch {
-    providerCfg = undefined;
-  }
-  if (!providerCfg || typeof providerCfg !== "object") return false; // not served here
-
-  pi.registerProvider(providerName, {
-    baseUrl: providerCfg.baseUrl,
-    apiKey: providerCfg.apiKey ?? "local",
-    api: providerCfg.api ?? "openai-completions",
-    headers: providerCfg.headers,
-    models: (providerCfg.models ?? []).map((mdl: any) => ({
-      id: mdl.id,
-      name: mdl.name ?? mdl.id,
-      api: mdl.api ?? providerCfg.api ?? "openai-completions",
-      baseUrl: mdl.baseUrl ?? providerCfg.baseUrl,
-      reasoning: mdl.reasoning ?? false,
-      input: mdl.input ?? ["text"],
-      cost: mdl.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: mdl.contextWindow ?? 262144,
-      maxTokens: mdl.maxTokens ?? 8192,
-      compat: mdl.compat ?? providerCfg.compat,
-    })),
-    streamSimple: (model: any, context: any, options: any): any => {
-      const piai = require("@earendil-works/pi-ai");
-      const outStream = piai.createAssistantMessageEventStream();
-
-      const errEvent = (stopReason: string, errorMessage: string) => ({
-        type: "error" as const,
-        reason: "error" as const,
-        error: {
-          role: "assistant",
-          content: [],
-          api: "openai-completions",
-          provider: model?.provider ?? providerName,
-          model: model?.id ?? "",
-          usage: emptyUsage(),
-          stopReason,
-          errorMessage,
-          timestamp: Date.now(),
-        },
-      });
-
-      const drive = async () => {
-        const real = piai.getApiProvider("openai-completions");
-        if (!real) {
-          outStream.push(errEvent("error", "xml-function-toolcall: openai-completions provider unavailable"));
-          outStream.end();
-          return;
-        }
-
-        const upstream = real.streamSimple(model, context, options);
-        let finalMsg: any | undefined;
-        let terminalType: "done" | "error" | undefined;
-        let terminalReason: string | undefined;
-
-        try {
-          for await (const ev of upstream) {
-            if (ev.type === "done") {
-              finalMsg = ev.message;
-              terminalType = "done";
-              terminalReason = ev.reason;
-              break;
-            }
-            if (ev.type === "error") {
-              finalMsg = ev.error;
-              terminalType = "error";
-              terminalReason = ev.reason;
-              break;
-            }
-            outStream.push(ev); // live text/thinking through unchanged
-          }
-        } catch (e) {
-          outStream.push(errEvent("error", `xml-function-toolcall: upstream stream failed: ${(e as Error).message}`));
-          outStream.end();
-          return;
-        }
-
-        if (!terminalType || !finalMsg) {
-          // Upstream closed without a terminal event: push one so result() resolves.
-          outStream.push(errEvent("aborted", "xml-function-toolcall: upstream stream closed without a terminal event"));
-          outStream.end();
-          return;
-        }
-
-        if (terminalType === "error") {
-          outStream.push({ type: "error", reason: terminalReason, error: finalMsg });
-          outStream.end();
-          return;
-        }
-
-        // done: repair only if the backend produced no structured tool call.
-        const content: any[] = Array.isArray(finalMsg.content) ? finalMsg.content : [];
-        const hasRealToolCall = content.some((b) => b?.type === "toolCall");
-        const repaired = hasRealToolCall ? null : repairContent(content);
-
-        if (!repaired || repaired.calls.length === 0) {
-          outStream.push({ type: "done", reason: terminalReason ?? "stop", message: finalMsg });
-          outStream.end();
-          return;
-        }
-
-        const toolCalls = repaired.calls.map((c, idx) =>
-          piai.fauxToolCall(c.name, c.arguments as Record<string, any>, { id: makeId(idx) }),
-        );
-        const newContent: any[] = [...repaired.newContent, ...toolCalls];
-        const repairedMsg = { ...finalMsg, content: newContent, stopReason: "toolUse" };
-
-        // The preserved text/thinking blocks already streamed live; only the
-        // recovered tool calls need dispatch-correct events. done.message carries
-        // the authoritative (cleaned) content for persistence.
-        let ci = repaired.newContent.length;
-        for (const tc of toolCalls) {
-          outStream.push({ type: "toolcall_start", contentIndex: ci, partial: repairedMsg });
-          outStream.push({ type: "toolcall_delta", contentIndex: ci, delta: JSON.stringify(tc.arguments), partial: repairedMsg });
-          outStream.push({ type: "toolcall_end", contentIndex: ci, toolCall: tc, partial: repairedMsg });
-          ci++;
-        }
-        outStream.push({ type: "done", reason: "toolUse", message: repairedMsg });
-        outStream.end();
-      };
-
-      void drive();
-      return outStream;
-    },
-  });
-  return true;
+/** Process-unique synthetic tool-call id (monotonic counter avoids same-ms collisions). */
+let callSeq = 0;
+function makeId(): string {
+  return `xmlfn_${Date.now().toString(36)}_${callSeq++}`;
 }
 
 export default function (pi: any) {
-  for (const providerName of TARGET_PROVIDERS) {
-    registerRepair(pi, providerName);
-  }
+  // `message_end` handlers may return a replacement message with the SAME role;
+  // returning nothing leaves the message untouched.
+  pi.on("message_end", async (event: any, _ctx: any) => {
+    const msg = event?.message;
+    if (!msg || msg.role !== "assistant" || !Array.isArray(msg.content)) return;
+
+    // Scope to the providers whose models emit the <function=…> form. When the
+    // message carries a provider we don't target, skip; if it is absent, fall
+    // through — repairContent's per-block "<function=" fast path is the real
+    // guard, so a well-behaved message is a strict no-op either way.
+    if (msg.provider && !TARGET_PROVIDERS.includes(msg.provider)) return;
+
+    // A real structured tool call is already present → nothing to repair.
+    if (msg.content.some((b: any) => b?.type === "toolCall")) return;
+
+    // Recover calls trapped as <function=…> text in the answer OR thinking
+    // channel; repairContent returns the content with those spans stripped and
+    // now-empty blocks dropped.
+    const { newContent, calls } = repairContent(msg.content);
+    if (calls.length === 0) return;
+
+    // First-call policy (matches qwen25coder-toolcall): a model can narrate a
+    // whole speculative workflow as several calls in one turn. Dispatch ONLY the
+    // first — the agentic one-step-at-a-time contract: end the turn, let the
+    // tool result feed back, let the model continue. repairContent already
+    // stripped every recovered call, so the remainder neither dispatches nor
+    // leaks as text.
+    const c = calls[0];
+    const toolCall = {
+      type: "toolCall",
+      id: makeId(),
+      name: c.name,
+      arguments: c.arguments as Record<string, any>,
+    };
+
+    // stopReason "toolUse" makes pi dispatch the call and continue the loop.
+    return { message: { ...msg, content: [...newContent, toolCall], stopReason: "toolUse" } };
+  });
 }
