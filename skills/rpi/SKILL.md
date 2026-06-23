@@ -70,8 +70,19 @@ stop — you cannot drive the chain without them.
 | Stage | Worker tool | Command | Writes | Backend | Gate |
 |-------|-------------|---------|--------|---------|------|
 | Research  | `research-worker` | `/research` | report → workspace | 27B | coordinator relevance check (no model reviewer) |
-| Plan      | `planner-worker`  | `/plan`     | plan → workspace   | 27B | heterogeneous pair: coder one-shot review (32B) + adversary (27B); +30B-A3B for depth |
-| Implement | `coder-worker`    | `/implement`| **the real repo**  | 32B (large) / 27B (small) | adversary (27B); +30B-A3B for depth |
+| Plan      | `planner-worker`  | `/plan`     | plan → workspace   | 27B | coder one-shot review (gemma431b) + adversary (gemma431b); see independence note |
+| Implement | `coder-worker`    | `/implement`| **the real repo**  | gemma431b (default) / 32B (`PI_CODER_TIER=large`) / 27B (`small`) | adversary (gemma431b); see independence note |
+
+**Independence note (2026-06-21).** The default coder AND adversary are now the
+SAME model (gemma431b, `:18112`, thinking-off). The gate's old cross-model
+independence (32B coder reviewed by a 27B adversary) is gone by default: the
+plan-gate pair are two draws of one model, and the implement-gate adversary
+reviews code its own model authored. The default leans on **non-determinism +
+the Gate decision rule** for separation. To restore a genuinely independent
+reviewer on a load-bearing change, **override the adversary to a different
+model** — the 27B is always up and cheap: `PI_ADVERSARY_MODEL=$HOME/models/Qwen3.5-27B-4bit`
+with `--provider local-mlx`, or run the Claude `adversary` subagent. Recommended
+for security/data-loss/schema changes.
 
 Researcher, Planner, and Adversary are read-only and stage to
 `PI_RESEARCH_WORKSPACE`. The **Coder is the only worker that writes the real
@@ -86,21 +97,23 @@ the full machine.
 
 **Reviews are serial-INDEPENDENT, not cascaded.** When a gate uses more than one
 reviewer, run them one at a time but keep each **blind to the others' verdicts**
-— never feed reviewer A's findings into reviewer B. The point of a heterogeneous
-pair is two independent draws; showing the second reviewer the first's answer
-collapses it back to one opinion with extra steps. You combine the verdicts
-yourself, after both are in, by the Gate decision rule.
+— never feed reviewer A's findings into reviewer B. The point is independent
+draws; showing the second reviewer the first's answer collapses it back to one
+opinion with extra steps. You combine the verdicts yourself, after both are in,
+by the Gate decision rule. Caveat (see the Independence note): by default both
+plan-gate halves are the same model, so the two draws differ only by sampling —
+override one reviewer's model to recover a true heterogeneous pair.
 
 **Reviewer wiring (honest status).** Both halves of the plan-gate pair exist as
-dispatch tools: the **adversary pass** (`adversary-review`, 27B) and the **coder
-one-shot plan review** (`coder-review`, the coder tier — 32B on :18111, or 27B
-on :18080 with `PI_CODER_TIER=small`). The optional **30B-A3B depth reviewer** is
-a *model override*, not a standing reviewer: that backend is **parked** (listed
-in `models.json` but not started by `config.conf` — :18080 serves the 27B), so a
-depth pass requires bringing it up first (`adversary-pass.sh --provider local-mlx
---model qwen3-coder-30b-a3b`). Until you do, the plan gate is adversary +
-coder-review; if either tool is absent from your `--tools`, **say so in your
-summary** — never report a reviewer as having run when it did not.
+dispatch tools: the **adversary pass** (`adversary-review`, gemma431b by default)
+and the **coder one-shot plan review** (`coder-review`, the coder tier — gemma431b
+on :18112 by default; 32B on :18111 with `PI_CODER_TIER=large`; 27B on :18080
+with `=small`). To make the pair genuinely heterogeneous, point one of them at a
+different model (e.g. the adversary at the 27B via `PI_ADVERSARY_MODEL` +
+`--provider local-mlx`, or the coder at the 32B via `PI_CODER_TIER=large`). The
+Claude `adversary` subagent is the other heterogeneous option. If either tool is
+absent from your `--tools`, **say so in your summary** — never report a reviewer
+as having run when it did not.
 
 ### Loop
 
@@ -119,24 +132,29 @@ summary** — never report a reviewer as having run when it did not.
    planner records which research candidates it **rejected and why**, and flags
    any claim it could not verify as **UNVERIFIED** (so the gate can challenge the
    rejection, not just the surviving plan). Note the plan path.
-4. **Plan gate (heterogeneous pair, serial-independent).** Run, one at a time,
-   blind to each other:
+4. **Plan gate (coder + adversary, serial-independent).** Run, one at a time,
+   blind to each other (same model by default — see the Independence note):
    - a **coder one-shot review** (`coder-review` tool, the implementor model) —
      the party that will build this, vetting whether the plan is buildable and
      right; pass it the plan path and the goal;
-   - an **adversary** pass (`adversary-review`, 27B) — owning the
-     design / scope / should-this-exist critique;
-   - optionally a **third reviewer** (30B-A3B override) when you want depth — its
-     backend is parked, so bring it up first (see Reviewer wiring).
+   - an **adversary** pass (`adversary-review`, gemma431b by default) — owning
+     the design / scope / should-this-exist critique;
+   - by default both are gemma431b (see the Independence note); for a
+     load-bearing change make the pair heterogeneous by overriding the adversary
+     to a different model (the 27B, or the Claude `adversary` subagent).
    Then combine per the **Gate decision rule** below. Revise via another `/plan`
    dispatch — **never hand-edit the plan yourself** (directive 1) — for confirmed
    problems; re-gate.
 5. **Implement.** Dispatch `coder-worker`, pointing it at the plan path. It
    writes the real repo and returns a `git diff --stat` summary.
-6. **Implement gate.** Dispatch `adversary-review` on the diff. The 32B authored
-   it, so the 27B adversary is the independent reviewer (add 30B-A3B for depth).
-   This gate is **single-reviewer by necessity** — the implementor exhausts the
-   coder slot, so there is no independent coder here; accept the asymmetry.
+6. **Implement gate.** Dispatch `adversary-review` on the diff. By default the
+   adversary is the SAME model that authored the diff (gemma431b) — so this is a
+   **self-review**, separated only by sampling, not a cross-model independent
+   check (see the Independence note). For anything load-bearing, override the
+   adversary to a different model (the 27B via `PI_ADVERSARY_MODEL` + `--provider
+   local-mlx`, or the Claude `adversary` subagent) to get a real independent
+   reviewer. This gate is single-reviewer by necessity — the implementor exhausts
+   the default coder slot, so there is no second coder here.
    Triage each confirmed concern **by type**: a **plan-level** defect goes back
    to `planner-worker` with refined context; a **code-level** defect goes to a
    scoped `coder-worker` fix pass. Re-gate until clean or remaining concerns are
@@ -145,9 +163,12 @@ summary** — never report a reviewer as having run when it did not.
 
 ## Gate decision rule
 
-You combine reviewer findings by **type, not by head-count**. You are usually
-the 27B yourself, which shares priors with the adversary — so do not adjudicate
-substance by taste; apply the rule.
+You combine reviewer findings by **type, not by head-count** — doubly so now
+that the default coder and adversary are the **same model** (gemma431b), so they
+share priors and a "both agree" tells you little. Do not adjudicate substance by
+taste or by agreement; apply the rule. When independence actually matters,
+override one reviewer to a different model (Independence note) rather than
+trusting two same-model draws.
 
 - **Fact / blocker** — a claim that is provably true-or-false, or a missing
   prerequisite. **Not votable.** No weighting or majority clears it; only
@@ -190,11 +211,12 @@ fix yourself (directive 1). Re-gate after any change.
   themselves regardless of your mode.
 - A dispatched worker sets its own `--tools` and never inherits your authority;
   you cannot widen it from here.
-- **Coder tier.** The Coder defaults to the large tier (32B on `:18111`). On a
-  `<112 GB` box that backend is absent, so export `PI_CODER_TIER=small` before
-  launching the session (the Coder then targets the 27B on `:18080`). If an
-  `/implement` dispatch fails with "backend http://localhost:18111 unreachable",
-  that is the cause — set `PI_CODER_TIER=small` and re-dispatch.
+- **Coder tier.** The Coder defaults to gemma431b (`:18112`, 128GB). Other tiers:
+  `PI_CODER_TIER=large` → 32B on `:18111`; `=small` → 27B on `:18080` (for
+  `<112 GB` boxes where the heavy backends are absent). If an `/implement`
+  dispatch fails with "backend http://localhost:18112 unreachable", the gemma
+  backend is not up — `mlx-server.sh up gemma431b`, or set `PI_CODER_TIER=small`
+  and re-dispatch.
 
 ## Reporting
 

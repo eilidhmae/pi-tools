@@ -57,16 +57,17 @@ REVISE=0
 QUORUM=0
 
 # --- Auto-detect default provider/model ---
-# On Apple Silicon the default is local-mlx + the deployed thinking
-# adversary (Qwen3.5-27B-4bit, zero-shot, no adapter). The earlier
-# SFT lane (`qwen3-coder-30b-a3b` + `+adversary` adapter) is
-# deprecated on this branch — under the precision-on-real-bugs
-# metric, the thinking base produces substantively more findings.
-# Operators with the model at a different location export
-# PI_ADVERSARY_MODEL to override; default path uses $HOME so it
-# resolves correctly per user. The launch wrapper lives at
-# server/thinking-adversary/launch.sh.
-# If localhost:18080 is unreachable we fail LOUDLY rather than silently
+# On Apple Silicon (128GB) the default is local-mlx-gemma431b + Gemma-4-31B-it
+# 8bit on :18112, thinking OFF (the provider's qwen-chat-template compat keeps
+# enable_thinking=false unless --thinking is passed). Benchmarked 2026-06-21:
+# thinking-off gemma scored 4/4 planted bugs, 0 false positives, ~3s each —
+# strong AND stable via pi (thinking-ON gemma OOMs pi; use the raw-API path /
+# tooling/bench/adversary-bench.py for the thinking-on config). On <128GB boxes
+# override with PI_ADVERSARY_MODEL + --provider/--model (e.g. the 27B on
+# local-mlx :18080). The launch wrapper lives at server/extra-models (mlx-server.sh
+# up gemma431b). The earlier SFT lane (qwen3-coder-30b-a3b + +adversary adapter)
+# is deprecated on this branch.
+# If localhost:18112 is unreachable we fail LOUDLY rather than silently
 # falling back to a different backend: corpus contamination from a
 # fallback model -- different weights → different verdicts, silently
 # mislabelled -- is worse than a noisy abort. The ollama fallback was
@@ -79,13 +80,14 @@ QUORUM=0
 # --provider / --model / --adapter / --domain flags override this.
 # arm64 (macOS) or aarch64 (Linux container-harness guest → host MLX) → local-mlx.
 if [[ "$(uname -m)" == "arm64" || "$(uname -m)" == "aarch64" ]]; then
-  MODEL="${PI_ADVERSARY_MODEL:-$HOME/models/Qwen3.5-27B-4bit}"
-  PROVIDER="local-mlx"
-  if ! curl -fs --max-time 3 http://localhost:18080/v1/models >/dev/null 2>&1; then
-    echo "ERROR: default backend http://localhost:18080 unreachable on"  >&2
+  MODEL="${PI_ADVERSARY_MODEL:-unsloth/gemma-4-31b-it-MLX-8bit}"
+  PROVIDER="local-mlx-gemma431b"
+  if ! curl -fs --max-time 3 http://localhost:18112/v1/models >/dev/null 2>&1; then
+    echo "ERROR: default backend http://localhost:18112 unreachable on"  >&2
     echo "       Apple Silicon. Bring it up with:"                        >&2
-    echo "         bash <pi-tools>/server/mlx-server.sh up"               >&2
-    echo "       Or pass an explicit --provider / --model to bypass."     >&2
+    echo "         bash <pi-tools>/server/mlx-server.sh up gemma431b"     >&2
+    echo "       Or pass an explicit --provider / --model to bypass"      >&2
+    echo "       (e.g. --provider local-mlx --model ~/models/Qwen3.5-27B-4bit on <128GB)." >&2
     echo "       (No ollama fallback on arm64: same model, different"     >&2
     echo "       runtime, can't load adapters, and contaminates the"      >&2
     echo "       corpus -- removed 2026-05-16.)"                          >&2

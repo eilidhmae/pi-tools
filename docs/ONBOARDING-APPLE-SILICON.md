@@ -30,12 +30,14 @@ needed for normal use — see the end of this doc.
 for one of two certified tiers:
 
 - **128GB-class (large tier).** The 27B reasoning model
-  (`local-mlx`, `:18080`) serves the Session / Adversary / Researcher /
-  Planner roles, and a **Qwen2.5-Coder-32B** Code Worker
-  (`local-mlx-qwen25coder32b`, `:18111`) runs **concurrently** for the
-  implement step. On this tier `install.sh` also provisions the
-  `local-mlx-qwen25coder32b` provider. (The 80B track is a separate
-  manual single-session alternate — see the end of this doc.)
+  (`local-mlx`, `:18080`) serves the Session / Researcher / Planner roles, and
+  **Gemma-4-31B-it** (`local-mlx-gemma431b`, `:18112`) is the **default Code
+  Worker + Adversary** (thinking-off), running concurrently for the implement
+  step and the gates. `install.sh` also provisions the **Qwen2.5-Coder-32B**
+  (`local-mlx-coder32b`, `:18111`) as the `PI_CODER_TIER=large` alternative —
+  also useful as the *heterogeneous* reviewer when the default coder+adversary
+  (same gemma model) need an independent second model. (The 80B track is a
+  separate manual single-session alternate — see the end of this doc.)
 - **Smaller hosts (32GB-class).** The 27B serves **all** roles; the
   ~35 GB 32B Code Worker is **not** provisioned (it can't co-reside with
   the resident 27B), so `install.sh` adds nothing extra.

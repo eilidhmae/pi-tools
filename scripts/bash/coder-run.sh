@@ -14,7 +14,7 @@
 #     path there). This script FAILS HARD if invoked from a research-mode
 #     session — see the guard below.
 #
-# Two memory tiers, selected at RUNTIME by PI_CODER_TIER (no reinstall needed):
+# Three tiers, selected at RUNTIME by PI_CODER_TIER (no reinstall needed):
 #
 #   large (default): the 32B dense coder on :18111. Only the
 #     qwen25coder-toolcall extension is loaded (-e). That is the crux on this
@@ -27,6 +27,13 @@
 #     calls dispatch natively, so the toolcall-repair extension is NOT loaded
 #     (it is a strict no-op for non-32B models anyway) — this branch runs pi
 #     with no -e at all.
+#   gemma: a REASONING alternate coder, Gemma-4-31B-it 8bit on :18112 (its own
+#     port, never the :18111 slot). No toolcall-repair extension (different
+#     model id; the ext no-ops for it, and Gemma emits native structured tool
+#     calls). Thinking is ON by the model's own chat-template default — pi's
+#     --thinking flag is a no-op for this provider (no thinkingFormat compat),
+#     so it is not passed; reasoning:true in models.json makes pi parse the
+#     think output. Same one-track-with-80B memory rule as the 32B.
 #
 # The worker's system prompt is the `worker` skill (TDD: write a failing test,
 # implement, run the test, report the evidence).
@@ -80,7 +87,7 @@ if [[ "$(uname -m)" != "arm64" && "$(uname -m)" != "aarch64" ]]; then
   echo "       backends are served only there." >&2
   exit 2
 fi
-CODER_TIER="${PI_CODER_TIER:-large}"
+CODER_TIER="${PI_CODER_TIER:-gemma}"
 # Thinking level for the small/27B Coder path only (pi levels: off|minimal|low|
 # medium|high|xhigh). Default OFF: the RPI Implementor is an executor — the
 # deliberation is front-loaded into the (thinking) Planner — and thinking-off
@@ -95,7 +102,7 @@ case "$CODER_TIER" in
     # The provider/model ids are load-bearing: the toolcall-repair extension only
     # fires when the model id equals its TARGET_MODEL_ID, so these must match
     # exactly.
-    PROVIDER="local-mlx-qwen25coder32b"
+    PROVIDER="local-mlx-coder32b"
     # Pinned, NOT overridable: the toolcall-repair extension fires only when the
     # model id equals its TARGET_MODEL_ID byte-for-byte. Any other value silently
     # disables the repair (tool calls leak as text, the worker stalls with no
@@ -117,8 +124,17 @@ case "$CODER_TIER" in
     MODEL="${HOME}/models/Qwen3.5-27B-4bit"
     CODER_PORT=18080
     ;;
+  gemma)
+    # --- Gemma-4-31B reasoning coder on :18112 (its own port) ---
+    # No toolcall-repair extension (Gemma is a different model id and emits
+    # native structured tool calls). Thinking is the model's default; see the
+    # gemma branch in run_pi below.
+    PROVIDER="local-mlx-gemma431b"
+    MODEL="unsloth/gemma-4-31b-it-MLX-8bit"
+    CODER_PORT=18112
+    ;;
   *)
-    echo "ERROR: PI_CODER_TIER must be 'large' or 'small' (got '${CODER_TIER}')." >&2
+    echo "ERROR: PI_CODER_TIER must be 'large', 'small', or 'gemma' (got '${CODER_TIER}')." >&2
     exit 2
     ;;
 esac
@@ -183,6 +199,21 @@ run_pi() {
     pi \
       --no-extensions \
       -e "$TOOLCALL_EXT" \
+      --no-skills \
+      --no-prompt-templates \
+      --no-context-files \
+      --no-session \
+      --tools read,grep,find,ls,write,edit,bash \
+      --provider "$PROVIDER" \
+      --model "$MODEL" \
+      --system-prompt "$(cat "$WORKER_SKILL")" \
+      -p "$prompt" 2>&1
+  elif [[ "$CODER_TIER" == "gemma" ]]; then
+    # Gemma reasoning coder: no toolcall-repair extension (native structured
+    # tool calls), and no --thinking flag (a no-op for this provider — Gemma
+    # thinks by its chat-template default; reasoning:true handles parsing).
+    pi \
+      --no-extensions \
       --no-skills \
       --no-prompt-templates \
       --no-context-files \

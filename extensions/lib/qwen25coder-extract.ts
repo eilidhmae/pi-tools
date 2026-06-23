@@ -14,7 +14,7 @@
 
 // The single model the extension repairs. Everything is scoped to this id (and
 // the provider that serves it); any other model is a complete no-op.
-export const TARGET_PROVIDER = "local-mlx-qwen25coder32b";
+export const TARGET_PROVIDER = "local-mlx-coder32b";
 export const TARGET_MODEL_ID = "mlx-community/Qwen2.5-Coder-32B-Instruct-8bit";
 
 export interface ExtractedCall {

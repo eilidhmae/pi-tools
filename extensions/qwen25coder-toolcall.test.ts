@@ -20,7 +20,7 @@ function ok(cond: boolean, msg: string) {
 
 // --- scope constants are the documented ones ---
 ok(TARGET_MODEL_ID === "mlx-community/Qwen2.5-Coder-32B-Instruct-8bit", "target model id");
-ok(TARGET_PROVIDER === "local-mlx-qwen25coder32b", "target provider name");
+ok(TARGET_PROVIDER === "local-mlx-coder32b", "target provider name");
 
 // --- form 1: <tools> wrapper (the observed default) ---
 {
