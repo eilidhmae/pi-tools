@@ -388,10 +388,11 @@ extra_up() {
     die "no HF cache snapshot for $repo; run \`hf download $repo\` first."
   fi
 
-  # Opt-in MTP speculative-decoding draft (env MLX_MTP_DRAFT_<NAME>). Served in
-  # the SAME process — no extra port. The head must be an MTP class mlx_lm can
-  # load that shares the target's tokenizer/vocab (e.g. gemma4_assistant). OFF
-  # by default; not the removed standalone-draft `draft=` config token.
+  # MTP speculative-decoding draft (mtp_draft_repo_for). Served in the SAME
+  # process — no extra port. The head must be an MTP class mlx_lm can load that
+  # shares the target's tokenizer/vocab (e.g. gemma4_assistant). Rows with a
+  # built-in default run it ON (gemma431b); others off unless MLX_MTP_DRAFT_<NAME>
+  # names a repo. Not the removed standalone-draft `draft=` config token.
   local draft_repo draft_dir
   local draft_args=()
   draft_repo="$(mtp_draft_repo_for "$name")"
@@ -420,7 +421,10 @@ extra_up() {
     info "  port=$port  model=$model_dir  max-tokens=$max_tokens"
   fi
   local start_attempt max_start_attempts=3
+  : >"$logfile"   # fresh log for this `up`; retry attempts append below so a
+                  # multi-attempt cold-load failure keeps every attempt's output.
   for start_attempt in $(seq 1 "$max_start_attempts"); do
+    printf '=== %s launch attempt %s/%s ===\n' "$name" "$start_attempt" "$max_start_attempts" >>"$logfile"
     nohup "$MLX_SERVER_BIN" \
         --model "$model_dir" \
         --port "$port" \
@@ -429,7 +433,7 @@ extra_up() {
         --prompt-cache-size 16 \
         --prompt-cache-bytes 2147483648 \
         ${draft_args[@]+"${draft_args[@]}"} \
-        >"$logfile" 2>&1 &
+        >>"$logfile" 2>&1 &
     echo $! > "$pidfile"
     if ! wait_listening "$port" "$(cat "$pidfile")" "$logfile"; then
       die "$name failed to start; tail $logfile"
