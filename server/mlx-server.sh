@@ -160,17 +160,27 @@ EXTRA_MAXTOK=()
 # and beats 3 on both classes. Override per-run for predictable-heavy workloads.
 MLX_MTP_NUM_DRAFT_TOKENS="${MLX_MTP_NUM_DRAFT_TOKENS:-2}"
 
-# Echo the MTP draft HF repo opted-in for row $1 via MLX_MTP_DRAFT_<NAME>, or
-# nothing. NAME = short-name upper-cased with non-alnum mapped to '_'.
+# Built-in default MTP draft head per row. Rows listed here run the draft ON by
+# default (a bare `up <name>` launches with it); rows not listed stay off unless
+# MLX_MTP_DRAFT_<NAME> names a repo. This is the default-on policy.
+mtp_default_draft_for() {
+  case "$1" in
+    gemma431b) printf '%s' "mlx-community/gemma-4-31B-it-assistant-bf16" ;;
+  esac
+}
+
+# Echo the MTP draft HF repo for row $1, or nothing if the row runs no draft.
+# Precedence: global off > per-row off token > per-row repo override > built-in
+# default. NAME = short-name upper-cased, non-alnum -> '_'.
 #
-# Off-switches (matter once a row defaults the draft ON):
-#   - global:  MLX_MTP_DRAFT_DISABLE=1 (also 0? no — any non-empty truthy:
-#              1/true/yes/on) force-disables the draft for EVERY row, beating
-#              any per-row value. The one knob to turn the whole feature off.
-#   - per-row: set MLX_MTP_DRAFT_<NAME> to an explicit off token
-#              (off/0/no/none/false, case-insensitive) to disable just that row
-#              even if some wrapper exports a default repo. Empty/unset is also
-#              off (the original behaviour).
+# Off-switches:
+#   - global:  MLX_MTP_DRAFT_DISABLE truthy (1/true/yes/on) force-disables the
+#              draft for EVERY row, beating any per-row value or built-in default.
+#   - per-row: MLX_MTP_DRAFT_<NAME> set to an explicit off token
+#              (off/0/no/none/false, case-insensitive) disables just that row,
+#              overriding its built-in default.
+# Empty/unset now falls through to the built-in default, so a row with one runs
+# the draft ON unless explicitly turned off.
 mtp_draft_repo_for() {
   local name="$1" var val
   case "$(printf '%s' "${MLX_MTP_DRAFT_DISABLE:-}" | tr '[:upper:]' '[:lower:]')" in
@@ -179,9 +189,13 @@ mtp_draft_repo_for() {
   var="MLX_MTP_DRAFT_$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')"
   val="${!var:-}"
   case "$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')" in
-    ""|off|0|no|none|false) return 0 ;;   # explicit per-row off
+    off|0|no|none|false) return 0 ;;   # explicit per-row off
   esac
-  printf '%s' "$val"
+  if [[ -n "$val" ]]; then
+    printf '%s' "$val"             # explicit per-row repo override
+  else
+    mtp_default_draft_for "$name"  # unset -> row's built-in default (default-ON)
+  fi
 }
 
 load_extra_config() {
