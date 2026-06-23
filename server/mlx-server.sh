@@ -341,6 +341,19 @@ judge_down() {
 
 # --- extra-models track (one per config row) -------------------------------
 
+# Fire one tolerated generation through the (cold) MTP draft path so the first
+# real request never eats the cold-load Metal GPU command-buffer timeout (warm
+# requests are clean; the cold first speculative request is the one that can die).
+# 127.0.0.1 reaches the server regardless of HOST (0.0.0.0 or loopback). Returns
+# 0 on a clean response; non-zero if the process dies mid-request.
+mtp_warmup_request() {
+  local port="$1" model="$2"
+  curl -sS -m 180 "http://127.0.0.1:$port/v1/chat/completions" \
+    -H 'Content-Type: application/json' \
+    -d "{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"warmup\"}],\"max_tokens\":16,\"temperature\":0}" \
+    >/dev/null 2>&1
+}
+
 extra_up() {
   local name="$1"
   local idx
@@ -392,21 +405,42 @@ extra_up() {
   else
     info "  port=$port  model=$model_dir  max-tokens=$max_tokens"
   fi
-  nohup "$MLX_SERVER_BIN" \
-      --model "$model_dir" \
-      --port "$port" \
-      --host "$HOST" \
-      --max-tokens "$max_tokens" \
-      --prompt-cache-size 16 \
-      --prompt-cache-bytes 2147483648 \
-      ${draft_args[@]+"${draft_args[@]}"} \
-      >"$logfile" 2>&1 &
-  echo $! > "$pidfile"
-  if wait_listening "$port" "$(cat "$pidfile")" "$logfile"; then
-    info "  ${GRN}up${RST} (pid $(cat "$pidfile"))  listening=$HOST:$port"
-  else
-    die "$name failed to start; tail $logfile"
-  fi
+  local start_attempt max_start_attempts=3
+  for start_attempt in $(seq 1 "$max_start_attempts"); do
+    nohup "$MLX_SERVER_BIN" \
+        --model "$model_dir" \
+        --port "$port" \
+        --host "$HOST" \
+        --max-tokens "$max_tokens" \
+        --prompt-cache-size 16 \
+        --prompt-cache-bytes 2147483648 \
+        ${draft_args[@]+"${draft_args[@]}"} \
+        >"$logfile" 2>&1 &
+    echo $! > "$pidfile"
+    if ! wait_listening "$port" "$(cat "$pidfile")" "$logfile"; then
+      die "$name failed to start; tail $logfile"
+    fi
+    # No MTP draft head: nothing to warm.
+    if [[ -z "$draft_repo" ]]; then
+      info "  ${GRN}up${RST} (pid $(cat "$pidfile"))  listening=$HOST:$port"
+      return 0
+    fi
+    # MTP draft: warm the cold draft path once (see mtp_warmup_request). If the
+    # warm-up itself trips the Metal timeout (process dies), restart and retry.
+    info "  warming MTP draft path (attempt $start_attempt/$max_start_attempts)..."
+    if mtp_warmup_request "$port" "$model_dir" && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+      info "  ${GRN}up${RST} (pid $(cat "$pidfile"))  listening=$HOST:$port  mtp-draft warm"
+      return 0
+    fi
+    if kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+      warn "  warm-up request failed but server is alive — continuing unwarmed"
+      info "  ${GRN}up${RST} (pid $(cat "$pidfile"))  listening=$HOST:$port"
+      return 0
+    fi
+    warn "  draft server died during cold warm-up (likely Metal GPU timeout); restarting ($start_attempt/$max_start_attempts)"
+    rm -f "$pidfile"
+  done
+  die "$name draft server kept dying during cold warm-up after $max_start_attempts attempts; tail $logfile"
 }
 
 extra_down_inner() {
