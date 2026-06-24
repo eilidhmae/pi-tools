@@ -52,7 +52,7 @@ The deployed local stack splits roles across models. "RPI" =
 | ----------------------------------------------- | ---------------------------------- | ---------------------------- | ------- | ------- | ----------------------------- |
 | Session (interactive) / Adversary / Researcher / Planner | Qwen3.5-27B-4bit          | `local-mlx`                  | `:18080`| 262k    | thinking                      |
 | Code Worker / Implementor                       | Qwen2.5-Coder-32B-Instruct-8bit    | `local-mlx-coder32b`         | `:18111`| 32k     | dense coder                   |
-| Code Worker + Adversary (default, 128GB)         | Gemma-4-31B-it 8bit                 | `local-mlx-gemma431b`        | `:18112`| 262k    | thinking via --thinking (off default) |
+| Code Worker + Adversary (default, 128GB)         | Gemma-4-31B-it QAT 4-bit            | `local-mlx-gemma4`           | `:18112`| 262k    | thinking via --thinking (off default) |
 | Heavy single-session alternate                  | Qwen3-Coder-Next-80B-A3B 8-bit     | `local-mlx-80b`              | `:18130`| —       | MANUAL; 128GB-class only      |
 
 ### Two certified memory tiers
@@ -68,8 +68,8 @@ above any 64/96 box).
   reasoning roles, the 32B for the implement step. The 80B is a **manual
   single-session alternate**: it runs ONE heavy track at a time and
   spawns no parallel agents. `install.sh` provisions the
-  `local-mlx-coder32b` provider on this tier. Gemma-4-31B-it
-  (`local-mlx-gemma431b`, `:18112`) is also provisioned and is the **default**
+  `local-mlx-coder32b` provider on this tier. Gemma-4-31B-it QAT 4-bit
+  (`local-mlx-gemma4`, `:18112`) is also provisioned and is the **default**
   coder + adversary worker on 128GB (its own port — never shares the `:18111`
   slot, so there is no wrong-model ambiguity); the Qwen 32B remains available
   via `PI_CODER_TIER=large`.
@@ -84,21 +84,21 @@ above any 64/96 box).
 
 The **pi session default** stays the 27B (`local-mlx`) — interactive sessions
 launch on it unless `--model` says otherwise. The **role-worker defaults** on
-128GB, however, are now Gemma-4-31B (`local-mlx-gemma431b`, `:18112`):
+128GB, however, are now Gemma-4-31B QAT 4-bit (`local-mlx-gemma4`, `:18112`):
 - **Coder worker / implementor** — `coder-run.sh` / `coder-review.sh` default
   tier is `gemma` (was the 32B). `PI_CODER_TIER=large|small` selects the
   Qwen 32B / 27B instead.
 - **Adversary worker + in-session adversary agent** — `adversary-pass.sh` and
   `adversary-jailed.sh` (the latter is what the `/adversary-review` tool spawns)
-  default to gemma431b. `PI_ADVERSARY_MODEL` + `--provider/--model` override
+  default to gemma4. `PI_ADVERSARY_MODEL` + `--provider/--model` override
   (e.g. the 27B on `local-mlx` for <128GB hosts).
 
 These tier/adversary knobs and every other operator env var are catalogued
 in [`server/ENVIRONMENT.md`](server/ENVIRONMENT.md).
 
-Benchmarked 2026-06-21 (`tooling/bench/` in my-macbook): gemma431b is 3/3 on
-the coder TDD tasks and **4/4 planted bugs / 0 false positives** as a
-thinking-off adversary (~3s/file).
+Benchmarked (`tooling/bench/` in my-macbook): gemma4 (QAT 4-bit) is strong on
+the coder TDD tasks and as a thinking-off adversary on eval-v2 — no regression
+vs the retired 8-bit, at −33% memory / +40% speed.
 
 **Gemma thinking is off by default**, toggled per-run with `pi --thinking <level>`:
 the provider's `thinkingFormat: "qwen-chat-template"` compat makes pi send

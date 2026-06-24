@@ -27,7 +27,7 @@
 #     calls dispatch natively, so the toolcall-repair extension is NOT loaded
 #     (it is a strict no-op for non-32B models anyway) — this branch runs pi
 #     with no -e at all.
-#   gemma: a REASONING alternate coder, Gemma-4-31B-it 8bit on :18112 (its own
+#   gemma: a REASONING alternate coder, Gemma-4-31B-it QAT 4-bit on :18112 (its own
 #     port, never the :18111 slot). No toolcall-repair extension (different
 #     model id; the ext no-ops for it, and Gemma emits native structured tool
 #     calls). Thinking is ON by the model's own chat-template default — pi's
@@ -125,12 +125,12 @@ case "$CODER_TIER" in
     CODER_PORT=18080
     ;;
   gemma)
-    # --- Gemma-4-31B reasoning coder on :18112 (its own port) ---
+    # --- Gemma-4-31B QAT 4-bit reasoning coder on :18112 (its own port) ---
     # No toolcall-repair extension (Gemma is a different model id and emits
     # native structured tool calls). Thinking is the model's default; see the
     # gemma branch in run_pi below.
-    PROVIDER="local-mlx-gemma431b"
-    MODEL="unsloth/gemma-4-31b-it-MLX-8bit"
+    PROVIDER="local-mlx-gemma4"
+    MODEL="mlx-community/gemma-4-31B-it-qat-OptiQ-4bit"
     CODER_PORT=18112
     ;;
   *)

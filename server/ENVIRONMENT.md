@@ -6,9 +6,9 @@ selection, the pi harness runtime (coder/research/planner workers,
 adversary, quorum), containerization, install-time provisioning, and the
 git hooks.
 
-**Surveyed:** `~/src/pi-tools` on branch `gemma431b-mtp-draft`
-(superset of `main`/`gemma-models`; the three `MLX_MTP_*` vars are
-branch-specific — see §9). Searched `*.sh`, `*.py`,
+**Surveyed:** `~/src/pi-tools` on branch `gemma4-qat-consolidation`
+(superset of `main`/`gemma-models`; the `MLX_MTP_*` vars are
+branch-specific and now decoupled/dormant — see §9). Searched `*.sh`, `*.py`,
 `*.ts`/`*.js`, `*.conf`, `Dockerfile*`, READMEs, across `server/`,
 `scripts/`, `extensions/`, `hooks/`, `install.sh`.
 
@@ -76,7 +76,7 @@ block (`server/mlx-server.sh:70-96`); these match code.
 |-----|----------|---------|--------|-------------|
 | `PI_CODER_TIER` | Which Code-Worker backend the coder scripts target | `gemma` | `large` (32B :18111) \| `small` (27B :18080) \| `gemma` (Gemma-4-31B :18112) | `scripts/bash/coder-run.sh:90`, `scripts/bash/coder-review.sh:70` |
 | `PI_CODER_THINKING` | Thinking level for the small/27B coder path only (scoped to `local-mlx-coder27b`) | `off` | `off\|minimal\|low\|medium\|high\|xhigh` | `scripts/bash/coder-run.sh:97`, `scripts/bash/coder-review.sh:71` |
-| `PROVIDER` | Override the tier-derived pi provider id (coder-review) | tier-derived (`local-mlx-coder32b` / `local-mlx-coder27b` / `local-mlx-gemma431b`) | provider id from models.json | `scripts/bash/coder-review.sh:74,77,82,87` |
+| `PROVIDER` | Override the tier-derived pi provider id (coder-review) | tier-derived (`local-mlx-coder32b` / `local-mlx-coder27b` / `local-mlx-gemma4`) | provider id from models.json | `scripts/bash/coder-review.sh:74,77,82,87` |
 | `MODEL` | Override the tier-derived model id (coder-review) — see also §1 | tier-derived | model id from models.json | `scripts/bash/coder-review.sh:78,83,88` |
 | `PI_RESEARCH_WORKER_MODEL` | Model the research-jailed worker runs | `$HOME/models/Qwen3.5-27B-4bit` | path or repo id | `scripts/bash/research-jailed.sh:64` |
 | `PI_PLANNER_WORKER_MODEL` | Model the plan-jailed worker runs | `$HOME/models/Qwen3.5-27B-4bit` | path or repo id | `scripts/bash/plan-jailed.sh:66` |
@@ -89,11 +89,11 @@ block (`server/mlx-server.sh:70-96`); these match code.
 
 | Var | Controls | Default | Values | Consumed at |
 |-----|----------|---------|--------|-------------|
-| `PI_ADVERSARY_MODEL` | Model the local adversary reviewer runs | **`unsloth/gemma-4-31b-it-MLX-8bit`** on the main paths; **`$HOME/models/Qwen3.5-27B-4bit`** for the `general` tier in adversary-pass | path or repo id | `scripts/bash/adversary-jailed.sh:69`, `scripts/bash/adversary-pass.sh:83`, **and a different default at `adversary-pass.sh:116`** (see Footguns) |
+| `PI_ADVERSARY_MODEL` | Model the local adversary reviewer runs | **`mlx-community/gemma-4-31B-it-qat-OptiQ-4bit`** on the main paths; **`$HOME/models/Qwen3.5-27B-4bit`** for the `general` tier in adversary-pass | path or repo id | `scripts/bash/adversary-jailed.sh:69`, `scripts/bash/adversary-pass.sh:83`, **and a different default at `adversary-pass.sh:116`** (see Footguns) |
 | `ADV_NO_CAPTURE` | Skip writing the review into the capture corpus (`bootstrap.jsonl`) | unset (capture on) | non-empty / `1` to skip | `scripts/bash/adversary-pass.sh:401`, `adversary-loop.sh:191` |
 | `ADV_NO_DRIFT_CHECK` | Skip the adversary model/path drift check | unset (check on) | non-empty / `1` to skip | `scripts/bash/adversary-pass.sh:379` |
 | `PI_ADVERSARY_DATASET` | Capture corpus dir the adversary-capture lib writes to | `$HOME/.pi/agent/training/adversary-captures` | absolute path | `extensions/lib/adversary-capture.ts:43` |
-| `PI_QUORUM_MODELS` | Comma list of `model[@provider]` peers for the quorum tool (empty → single legacy peer) | `""` | e.g. `qwen3-coder-30b-a3b+adversary@local-mlx,gemma...@local-mlx-gemma431b` | `extensions/quorum.ts:56` |
+| `PI_QUORUM_MODELS` | Comma list of `model[@provider]` peers for the quorum tool (empty → single legacy peer) | `""` | e.g. `qwen3-coder-30b-a3b+adversary@local-mlx,gemma...@local-mlx-gemma4` | `extensions/quorum.ts:56` |
 | `PI_QUORUM_MODEL` | Legacy single-peer model (used when `PI_QUORUM_MODELS` empty) | `qwen3-coder-30b-a3b+adversary` (Apple Silicon) / `qwen3-coder:30b` (else) | model id | `extensions/quorum.ts:54` |
 | `PI_QUORUM_PROVIDER` | Legacy single-peer provider | `local-mlx` (Apple Silicon) / `ollama` (else) | provider id | `extensions/quorum.ts:55` |
 | `PI_QUORUM_TEMPS` | Comma list of per-peer temperatures | `0.2,0.5,0.7` | floats | `extensions/quorum.ts:57` |
@@ -164,22 +164,30 @@ see §1 `HOST`. There is no separate container-only port var.)
 
 ---
 
-## 9. MTP speculative-decode draft (gemma431b; default-ON)
+## 9. MTP speculative-decode draft (decoupled/dormant)
 
-**`gemma431b` runs the MTP draft ON by default** — a bare `mlx-server.sh
-up gemma431b` launches with the bf16 head and warms it. Disable per-row
-with `MLX_MTP_DRAFT_GEMMA431B=off` or globally with `MLX_MTP_DRAFT_DISABLE=1`;
-point `MLX_MTP_DRAFT_GEMMA431B` at another repo to override the head. Rows
-without a built-in default (e.g. `coder32b`) stay off unless
-`MLX_MTP_DRAFT_<NAME>` names a repo. (History: opt-in wiring `1ee61de`,
-off-switches `0e5c406`, default-ON flip later on `gemma431b-mtp-draft`.)
+**No serving row runs an MTP draft by default.** The gemma MTP
+speculative-decode work — the bf16 `gemma4_assistant` draft head, the venv
+mlx-lm `gemma4-assistant-mtp` branch, and the `MLX_GEMMA4_FULL_SLIDING_KV`
+full-retention KV mode — targeted the now-removed Gemma 8-bit weights. With the
+gemma row consolidated onto QAT 4-bit (`gemma4`, :18112) the draft head is no
+longer wired to any row: `mlx_lm.server` for `gemma4` launches with no draft, and
+`MLX_GEMMA4_FULL_SLIDING_KV` is unwired (the launcher no longer references it).
+
+These pieces are **preserved as upstreamable work**, not deleted — the bf16 head
+(`mlx-community/gemma-4-31B-it-assistant-bf16`), the mlx-lm branch, and the
+full-KV mode remain available should drafting be re-wired to a future row. The
+generic `MLX_MTP_DRAFT_<NAME>` / `MLX_MTP_NUM_DRAFT_TOKENS` / `MLX_MTP_DRAFT_DISABLE`
+infrastructure in `mlx-server.sh` stays intact and model-agnostic: any row can
+still opt in by setting `MLX_MTP_DRAFT_<NAME>` to a compatible MTP head repo.
+(History: opt-in wiring `1ee61de`, off-switches `0e5c406`, default-ON flip on
+`gemma431b-mtp-draft`, then decoupled here with the QAT 4-bit consolidation.)
 
 | Var | Controls | Default | Values | Consumed at |
 |-----|----------|---------|--------|-------------|
-| `MLX_MTP_DRAFT_<NAME>` | Opt a given extra-models row into an MTP speculative-decode draft head, served in the same process. `<NAME>` = the row short-name upper-cased, non-alnum → `_` (e.g. `MLX_MTP_DRAFT_GEMMA431B`). An explicit off token disables just that row; rows with a built-in default (gemma431b) run the draft ON when unset | built-in default if the row has one (gemma431b → bf16 head, ON); else unset = no draft | HF repo of an MTP draft head, e.g. `mlx-community/gemma-4-31B-it-assistant-bf16`; or an off token (`off`/`0`/`no`/`none`/`false`, case-insensitive). Unset falls through to the row's built-in default (default-ON for gemma431b), else no draft | `server/mlx-server.sh:190` (dynamic `${!var}` in `mtp_draft_repo_for`), off tokens at :192, built-in default `mtp_default_draft_for:166`, used at :398 |
-| `MLX_MTP_DRAFT_GEMMA431B` | The concrete instance for the gemma431b row | ON (bf16 head, via the row's built-in default) | `mlx-community/gemma-4-31B-it-assistant-bf16`, or an off token (as above) | resolved via the `MLX_MTP_DRAFT_<NAME>` mechanism above |
-| `MLX_MTP_DRAFT_DISABLE` | Global kill-switch: force-disables the MTP draft for **every** row, beating any per-row `MLX_MTP_DRAFT_<NAME>` value. The one knob to turn the whole feature off | unset (drafts follow per-row settings) | truthy `1`/`true`/`yes`/`on` (case-insensitive) disables all; anything else is ignored | `server/mlx-server.sh:186-188` (checked first in `mtp_draft_repo_for`) |
-| `MLX_MTP_NUM_DRAFT_TOKENS` | `--num-draft-tokens` the MTP draft head proposes per verification round when a row runs a draft | `2` (was 3; measured best for the agentic role on this M5 Max — mlx_lm's own default is 2) | integer | `server/mlx-server.sh:161`, used at :403 |
+| `MLX_MTP_DRAFT_<NAME>` | Opt a given extra-models row into an MTP speculative-decode draft head, served in the same process. `<NAME>` = the row short-name upper-cased, non-alnum → `_` (e.g. `MLX_MTP_DRAFT_GEMMA4`). An explicit off token disables just that row. No row has a built-in default now, so unset = no draft | unset = no draft (no row has a built-in default) | HF repo of an MTP draft head, e.g. `mlx-community/gemma-4-31B-it-assistant-bf16`; or an off token (`off`/`0`/`no`/`none`/`false`, case-insensitive) | `server/mlx-server.sh` (dynamic `${!var}` in `mtp_draft_repo_for`), off tokens checked there, built-in default `mtp_default_draft_for` (now empty), used in the launch path |
+| `MLX_MTP_DRAFT_DISABLE` | Global kill-switch: force-disables the MTP draft for **every** row, beating any per-row `MLX_MTP_DRAFT_<NAME>` value. The one knob to turn the whole feature off | unset (drafts follow per-row settings) | truthy `1`/`true`/`yes`/`on` (case-insensitive) disables all; anything else is ignored | `server/mlx-server.sh` (checked first in `mtp_draft_repo_for`) |
+| `MLX_MTP_NUM_DRAFT_TOKENS` | `--num-draft-tokens` the MTP draft head proposes per verification round when a row runs a draft | `2` (measured best for the agentic role on this M5 Max — mlx_lm's own default is 2) | integer | `server/mlx-server.sh` `MLX_MTP_NUM_DRAFT_TOKENS`, used in the launch path |
 
 ---
 
@@ -187,7 +195,7 @@ off-switches `0e5c406`, default-ON flip later on `gemma431b-mtp-draft`.)
 
 1. **`PI_ADVERSARY_MODEL` — same var, two different defaults *within one
    file*.** In `scripts/bash/adversary-pass.sh` the primary path
-   defaults to `unsloth/gemma-4-31b-it-MLX-8bit` (`:83`) but the
+   defaults to `mlx-community/gemma-4-31B-it-qat-OptiQ-4bit` (`:83`) but the
    `general` tier branch defaults to `$HOME/models/Qwen3.5-27B-4bit`
    (`:116`). `adversary-jailed.sh:69` agrees with the gemma default.
    Setting the var explicitly resolves the ambiguity; leaving it unset

@@ -70,11 +70,11 @@ stop — you cannot drive the chain without them.
 | Stage | Worker tool | Command | Writes | Backend | Gate |
 |-------|-------------|---------|--------|---------|------|
 | Research  | `research-worker` | `/research` | report → workspace | 27B | coordinator relevance check (no model reviewer) |
-| Plan      | `planner-worker`  | `/plan`     | plan → workspace   | 27B | coder one-shot review (gemma431b) + adversary (gemma431b); see independence note |
-| Implement | `coder-worker`    | `/implement`| **the real repo**  | gemma431b (default) / 32B (`PI_CODER_TIER=large`) / 27B (`small`) | adversary (gemma431b); see independence note |
+| Plan      | `planner-worker`  | `/plan`     | plan → workspace   | 27B | coder one-shot review (gemma4) + adversary (gemma4); see independence note |
+| Implement | `coder-worker`    | `/implement`| **the real repo**  | gemma4 (default) / 32B (`PI_CODER_TIER=large`) / 27B (`small`) | adversary (gemma4); see independence note |
 
 **Independence note (2026-06-21).** The default coder AND adversary are now the
-SAME model (gemma431b, `:18112`, thinking-off). The gate's old cross-model
+SAME model (gemma4, `:18112`, thinking-off). The gate's old cross-model
 independence (32B coder reviewed by a 27B adversary) is gone by default: the
 plan-gate pair are two draws of one model, and the implement-gate adversary
 reviews code its own model authored. The default leans on **non-determinism +
@@ -105,8 +105,8 @@ plan-gate halves are the same model, so the two draws differ only by sampling �
 override one reviewer's model to recover a true heterogeneous pair.
 
 **Reviewer wiring (honest status).** Both halves of the plan-gate pair exist as
-dispatch tools: the **adversary pass** (`adversary-review`, gemma431b by default)
-and the **coder one-shot plan review** (`coder-review`, the coder tier — gemma431b
+dispatch tools: the **adversary pass** (`adversary-review`, gemma4 by default)
+and the **coder one-shot plan review** (`coder-review`, the coder tier — gemma4
 on :18112 by default; 32B on :18111 with `PI_CODER_TIER=large`; 27B on :18080
 with `=small`). To make the pair genuinely heterogeneous, point one of them at a
 different model (e.g. the adversary at the 27B via `PI_ADVERSARY_MODEL` +
@@ -137,9 +137,9 @@ as having run when it did not.
    - a **coder one-shot review** (`coder-review` tool, the implementor model) —
      the party that will build this, vetting whether the plan is buildable and
      right; pass it the plan path and the goal;
-   - an **adversary** pass (`adversary-review`, gemma431b by default) — owning
+   - an **adversary** pass (`adversary-review`, gemma4 by default) — owning
      the design / scope / should-this-exist critique;
-   - by default both are gemma431b (see the Independence note); for a
+   - by default both are gemma4 (see the Independence note); for a
      load-bearing change make the pair heterogeneous by overriding the adversary
      to a different model (the 27B, or the Claude `adversary` subagent).
    Then combine per the **Gate decision rule** below. Revise via another `/plan`
@@ -148,7 +148,7 @@ as having run when it did not.
 5. **Implement.** Dispatch `coder-worker`, pointing it at the plan path. It
    writes the real repo and returns a `git diff --stat` summary.
 6. **Implement gate.** Dispatch `adversary-review` on the diff. By default the
-   adversary is the SAME model that authored the diff (gemma431b) — so this is a
+   adversary is the SAME model that authored the diff (gemma4) — so this is a
    **self-review**, separated only by sampling, not a cross-model independent
    check (see the Independence note). For anything load-bearing, override the
    adversary to a different model (the 27B via `PI_ADVERSARY_MODEL` + `--provider
@@ -164,7 +164,7 @@ as having run when it did not.
 ## Gate decision rule
 
 You combine reviewer findings by **type, not by head-count** — doubly so now
-that the default coder and adversary are the **same model** (gemma431b), so they
+that the default coder and adversary are the **same model** (gemma4), so they
 share priors and a "both agree" tells you little. Do not adjudicate substance by
 taste or by agreement; apply the rule. When independence actually matters,
 override one reviewer to a different model (Independence note) rather than
@@ -211,11 +211,11 @@ fix yourself (directive 1). Re-gate after any change.
   themselves regardless of your mode.
 - A dispatched worker sets its own `--tools` and never inherits your authority;
   you cannot widen it from here.
-- **Coder tier.** The Coder defaults to gemma431b (`:18112`, 128GB). Other tiers:
+- **Coder tier.** The Coder defaults to gemma4 (`:18112`, 128GB). Other tiers:
   `PI_CODER_TIER=large` → 32B on `:18111`; `=small` → 27B on `:18080` (for
   `<112 GB` boxes where the heavy backends are absent). If an `/implement`
   dispatch fails with "backend http://localhost:18112 unreachable", the gemma
-  backend is not up — `mlx-server.sh up gemma431b`, or set `PI_CODER_TIER=small`
+  backend is not up — `mlx-server.sh up gemma4`, or set `PI_CODER_TIER=small`
   and re-dispatch.
 
 ## Reporting

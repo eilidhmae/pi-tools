@@ -91,7 +91,7 @@
         { "id": "mlx-community/Qwen2.5-Coder-32B-Instruct-8bit", "name": "Qwen2.5-Coder 32B Instruct (MLX 8bit, dense coder)", "contextWindow": 32768 }
       ]
     },
-    "local-mlx-gemma431b": {
+    "local-mlx-gemma4": {
       "baseUrl": "http://127.0.0.1:18112/v1",
       "api": "openai-completions",
       "apiKey": "local",
@@ -101,7 +101,7 @@
         "thinkingFormat": "qwen-chat-template"
       },
       "models": [
-        { "id": "unsloth/gemma-4-31b-it-MLX-8bit", "name": "Gemma-4-31B-it (MLX 8bit, reasoning coder; thinking via --thinking)", "reasoning": true, "contextWindow": 262144 }
+        { "id": "mlx-community/gemma-4-31B-it-qat-OptiQ-4bit", "name": "Gemma-4-31B-it (MLX QAT 4-bit, reasoning coder; thinking via --thinking)", "reasoning": true, "contextWindow": 262144 }
       ]
     }
   }

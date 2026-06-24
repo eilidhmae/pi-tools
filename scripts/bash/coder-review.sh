@@ -25,8 +25,8 @@
 #   large (default): the 32B dense coder on :18111 (local-mlx-coder32b).
 #   small:           the 27B on :18080 (local-mlx-coder27b, thinking-off) for
 #                    <112GB boxes where the 32B can't co-reside.
-#   gemma:           the Gemma-4-31B reasoning coder on :18112
-#                    (local-mlx-gemma431b); thinking on by model default.
+#   gemma:           the Gemma-4-31B QAT 4-bit reasoning coder on :18112
+#                    (local-mlx-gemma4); thinking on by model default.
 # --model/--provider override the tier (e.g. point at a parked 30B-A3B once its
 # backend is up for a depth pass).
 #
@@ -84,8 +84,8 @@ if [[ -z "$PROVIDER" || -z "$MODEL" ]]; then
       CODER_PORT=18080
       ;;
     gemma)
-      PROVIDER="${PROVIDER:-local-mlx-gemma431b}"
-      MODEL="${MODEL:-unsloth/gemma-4-31b-it-MLX-8bit}"
+      PROVIDER="${PROVIDER:-local-mlx-gemma4}"
+      MODEL="${MODEL:-mlx-community/gemma-4-31B-it-qat-OptiQ-4bit}"
       CODER_PORT=18112
       ;;
     *)
@@ -98,7 +98,7 @@ else
   # the override and skip the reachability precheck (operator's responsibility).
   case "$PROVIDER" in
     local-mlx-coder32b) CODER_PORT=18111 ;;
-    local-mlx-gemma431b) CODER_PORT=18112 ;;
+    local-mlx-gemma4) CODER_PORT=18112 ;;
     local-mlx-coder27b|local-mlx) CODER_PORT=18080 ;;
     *) CODER_PORT="" ;;
   esac

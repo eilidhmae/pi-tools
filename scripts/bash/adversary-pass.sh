@@ -57,15 +57,15 @@ REVISE=0
 QUORUM=0
 
 # --- Auto-detect default provider/model ---
-# On Apple Silicon (128GB) the default is local-mlx-gemma431b + Gemma-4-31B-it
-# 8bit on :18112, thinking OFF (the provider's qwen-chat-template compat keeps
-# enable_thinking=false unless --thinking is passed). Benchmarked 2026-06-21:
-# thinking-off gemma scored 4/4 planted bugs, 0 false positives, ~3s each —
+# On Apple Silicon (128GB) the default is local-mlx-gemma4 + Gemma-4-31B-it
+# QAT 4-bit on :18112, thinking OFF (the provider's qwen-chat-template compat keeps
+# enable_thinking=false unless --thinking is passed). Benchmarked thinking-off
+# gemma strong as adversary (eval-v2: no regression vs the retired 8-bit) —
 # strong AND stable via pi (thinking-ON gemma OOMs pi; use the raw-API path /
 # tooling/bench/adversary-bench.py for the thinking-on config). On <128GB boxes
 # override with PI_ADVERSARY_MODEL + --provider/--model (e.g. the 27B on
 # local-mlx :18080). The launch wrapper lives at server/extra-models (mlx-server.sh
-# up gemma431b). The earlier SFT lane (qwen3-coder-30b-a3b + +adversary adapter)
+# up gemma4). The earlier SFT lane (qwen3-coder-30b-a3b + +adversary adapter)
 # is deprecated on this branch.
 # If localhost:18112 is unreachable we fail LOUDLY rather than silently
 # falling back to a different backend: corpus contamination from a
@@ -80,12 +80,12 @@ QUORUM=0
 # --provider / --model / --adapter / --domain flags override this.
 # arm64 (macOS) or aarch64 (Linux container-harness guest → host MLX) → local-mlx.
 if [[ "$(uname -m)" == "arm64" || "$(uname -m)" == "aarch64" ]]; then
-  MODEL="${PI_ADVERSARY_MODEL:-unsloth/gemma-4-31b-it-MLX-8bit}"
-  PROVIDER="local-mlx-gemma431b"
+  MODEL="${PI_ADVERSARY_MODEL:-mlx-community/gemma-4-31B-it-qat-OptiQ-4bit}"
+  PROVIDER="local-mlx-gemma4"
   if ! curl -fs --max-time 3 http://localhost:18112/v1/models >/dev/null 2>&1; then
     echo "ERROR: default backend http://localhost:18112 unreachable on"  >&2
     echo "       Apple Silicon. Bring it up with:"                        >&2
-    echo "         bash <pi-tools>/server/mlx-server.sh up gemma431b"     >&2
+    echo "         bash <pi-tools>/server/mlx-server.sh up gemma4"        >&2
     echo "       Or pass an explicit --provider / --model to bypass"      >&2
     echo "       (e.g. --provider local-mlx --model ~/models/Qwen3.5-27B-4bit on <128GB)." >&2
     echo "       (No ollama fallback on arm64: same model, different"     >&2

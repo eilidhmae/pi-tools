@@ -41,7 +41,7 @@
 #     Set MLX_MTP_DRAFT_<NAME>=<hf-repo> (NAME = the row short-name
 #     upper-cased, non-alnum -> _) to launch that row with an MTP draft
 #     head served in the SAME process (no extra port):
-#       --draft-model <repo> --num-draft-tokens $MLX_MTP_NUM_DRAFT_TOKENS (3)
+#       --draft-model <repo> --num-draft-tokens $MLX_MTP_NUM_DRAFT_TOKENS (2)
 #     This is OFF by default: a bare `mlx-server.sh up <name>` launches the
 #     plain server with no draft. The draft head must be an MTP head whose
 #     mlx_lm model class owns no KV cache (e.g. gemma4_assistant); the
@@ -162,11 +162,11 @@ MLX_MTP_NUM_DRAFT_TOKENS="${MLX_MTP_NUM_DRAFT_TOKENS:-2}"
 
 # Built-in default MTP draft head per row. Rows listed here run the draft ON by
 # default (a bare `up <name>` launches with it); rows not listed stay off unless
-# MLX_MTP_DRAFT_<NAME> names a repo. This is the default-on policy.
+# MLX_MTP_DRAFT_<NAME> names a repo. No row currently defaults to a draft — the
+# gemma drafting head is decoupled (see ENVIRONMENT.md §9), so this falls through
+# to nothing. The generic MLX_MTP_DRAFT_<NAME> opt-in below still works per row.
 mtp_default_draft_for() {
-  case "$1" in
-    gemma431b) printf '%s' "mlx-community/gemma-4-31B-it-assistant-bf16" ;;
-  esac
+  : "$1"   # no row has a built-in draft default; opt in via MLX_MTP_DRAFT_<NAME>
 }
 
 # Echo the MTP draft HF repo for row $1, or nothing if the row runs no draft.
@@ -179,8 +179,8 @@ mtp_default_draft_for() {
 #   - per-row: MLX_MTP_DRAFT_<NAME> set to an explicit off token
 #              (off/0/no/none/false, case-insensitive) disables just that row,
 #              overriding its built-in default.
-# Empty/unset now falls through to the built-in default, so a row with one runs
-# the draft ON unless explicitly turned off.
+# Empty/unset falls through to the built-in default (currently none for any
+# row), so a draft runs only when MLX_MTP_DRAFT_<NAME> names a repo.
 mtp_draft_repo_for() {
   local name="$1" var val
   case "$(printf '%s' "${MLX_MTP_DRAFT_DISABLE:-}" | tr '[:upper:]' '[:lower:]')" in
@@ -390,9 +390,10 @@ extra_up() {
 
   # MTP speculative-decoding draft (mtp_draft_repo_for). Served in the SAME
   # process — no extra port. The head must be an MTP class mlx_lm can load that
-  # shares the target's tokenizer/vocab (e.g. gemma4_assistant). Rows with a
-  # built-in default run it ON (gemma431b); others off unless MLX_MTP_DRAFT_<NAME>
-  # names a repo. Not the removed standalone-draft `draft=` config token.
+  # shares the target's tokenizer/vocab (e.g. gemma4_assistant). No row has a
+  # built-in default now (gemma drafting decoupled); a row runs a draft only when
+  # MLX_MTP_DRAFT_<NAME> names a repo. Not the removed standalone-draft `draft=`
+  # config token.
   local draft_repo draft_dir
   local draft_args=()
   draft_repo="$(mtp_draft_repo_for "$name")"
