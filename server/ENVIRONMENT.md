@@ -174,8 +174,26 @@ without a built-in default (e.g. `coder32b`) stay off unless
 `MLX_MTP_DRAFT_<NAME>` names a repo. (History: opt-in wiring `1ee61de`,
 off-switches `0e5c406`, default-ON flip later on `gemma431b-mtp-draft`.)
 
+**Optional — beat the >1024 throughput cliff (`MLX_GEMMA4_FULL_SLIDING_KV`).**
+With drafting on, speculation is suppressed once a session crosses Gemma's 1024
+sliding window (the rotating KV cache can't be trimmed there), so throughput
+drops from ~22.6 to ~14.5 tok/s for the rest of the session. Setting
+`MLX_GEMMA4_FULL_SLIDING_KV=on` gives the sliding layers a full-retention KV
+cache (always trimmable) so speculation **continues past 1024** — measured ~22.5
+tok/s sustained. This is **not** a launcher flag: it is read directly by the venv
+mlx-lm (`mlx_lm/models/gemma4_text.py:make_cache`), so it only needs to be in the
+server's environment — `MLX_GEMMA4_FULL_SLIDING_KV=on mlx-server.sh up gemma431b`
+propagates via the launcher's `nohup`. **Caveats:** (1) past the window the output
+is distribution-faithful but **not byte-exact** (benign 8-bit fp near-tie flips —
+fine for sampling/agentic use; don't enable where you rely on byte-deterministic
+greedy); (2) sliding-layer KV grows to the full context (~0.84 MB/tok on the 31B)
+— ~40 GB at 8k, ~88 GB at 64k, **OOM above ~100k tokens** on a 128 GB box. Enable
+only for contexts up to ~64k (where the cliff actually bites). Default (unset)
+keeps the conservative suppression.
+
 | Var | Controls | Default | Values | Consumed at |
 |-----|----------|---------|--------|-------------|
+| `MLX_GEMMA4_FULL_SLIDING_KV` | Opt the gemma431b drafting server into full-length sliding K/V so MTP speculation continues past the 1024 window (no throughput cliff). Read by the model, not the launcher (inherited via `nohup`). Trades byte-exact greedy past the window for sustained speed; grows KV with context (cap ~64k) | unset (stock RotatingKVCache + suppression past 1024) | truthy `1`/`true`/`yes`/`on` (case-insensitive); anything else = off | venv mlx-lm `mlx_lm/models/gemma4_text.py` `_full_sliding_kv_enabled()` / `Model.make_cache` |
 | `MLX_MTP_DRAFT_<NAME>` | Opt a given extra-models row into an MTP speculative-decode draft head, served in the same process. `<NAME>` = the row short-name upper-cased, non-alnum → `_` (e.g. `MLX_MTP_DRAFT_GEMMA431B`). An explicit off token disables just that row; rows with a built-in default (gemma431b) run the draft ON when unset | built-in default if the row has one (gemma431b → bf16 head, ON); else unset = no draft | HF repo of an MTP draft head, e.g. `mlx-community/gemma-4-31B-it-assistant-bf16`; or an off token (`off`/`0`/`no`/`none`/`false`, case-insensitive). Unset falls through to the row's built-in default (default-ON for gemma431b), else no draft | `server/mlx-server.sh:190` (dynamic `${!var}` in `mtp_draft_repo_for`), off tokens at :192, built-in default `mtp_default_draft_for:166`, used at :398 |
 | `MLX_MTP_DRAFT_GEMMA431B` | The concrete instance for the gemma431b row | ON (bf16 head, via the row's built-in default) | `mlx-community/gemma-4-31B-it-assistant-bf16`, or an off token (as above) | resolved via the `MLX_MTP_DRAFT_<NAME>` mechanism above |
 | `MLX_MTP_DRAFT_DISABLE` | Global kill-switch: force-disables the MTP draft for **every** row, beating any per-row `MLX_MTP_DRAFT_<NAME>` value. The one knob to turn the whole feature off | unset (drafts follow per-row settings) | truthy `1`/`true`/`yes`/`on` (case-insensitive) disables all; anything else is ignored | `server/mlx-server.sh:186-188` (checked first in `mtp_draft_repo_for`) |
