@@ -61,16 +61,16 @@ done
 # --- Model / provider (mirror adversary-pass.sh) ---
 # macOS reports arm64; the Linux container-harness guest reports aarch64. Both
 # reach the host MLX (forwarded via socat inside the container), so both take
-# the local-mlx-gemma431b path — only a genuinely other arch (x86) → ollama.
-# Default (128GB): Gemma-4-31B-it 8bit on :18112, thinking OFF (no --thinking
+# the local-mlx-gemma4 path — only a genuinely other arch (x86) → ollama.
+# Default (128GB): Gemma-4-31B-it QAT 4-bit on :18112, thinking OFF (no --thinking
 # passed → provider keeps enable_thinking=false → stable via pi; thinking-ON
 # OOMs pi). Override with PI_ADVERSARY_MODEL + --provider/--model on <128GB.
 if [[ "$(uname -m)" == "arm64" || "$(uname -m)" == "aarch64" ]]; then
-  MODEL="${PI_ADVERSARY_MODEL:-unsloth/gemma-4-31b-it-MLX-8bit}"
-  PROVIDER="local-mlx-gemma431b"
+  MODEL="${PI_ADVERSARY_MODEL:-mlx-community/gemma-4-31B-it-qat-OptiQ-4bit}"
+  PROVIDER="local-mlx-gemma4"
   if ! curl -fs --max-time 3 http://localhost:18112/v1/models >/dev/null 2>&1; then
     echo "ERROR: backend http://localhost:18112 unreachable. Bring it up:" >&2
-    echo "         bash <pi-tools>/server/mlx-server.sh up gemma431b"       >&2
+    echo "         bash <pi-tools>/server/mlx-server.sh up gemma4"          >&2
     exit 2
   fi
 else

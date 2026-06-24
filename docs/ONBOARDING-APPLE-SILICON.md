@@ -31,7 +31,7 @@ for one of two certified tiers:
 
 - **128GB-class (large tier).** The 27B reasoning model
   (`local-mlx`, `:18080`) serves the Session / Researcher / Planner roles, and
-  **Gemma-4-31B-it** (`local-mlx-gemma431b`, `:18112`) is the **default Code
+  **Gemma-4-31B-it QAT 4-bit** (`local-mlx-gemma4`, `:18112`) is the **default Code
   Worker + Adversary** (thinking-off), running concurrently for the implement
   step and the gates. `install.sh` also provisions the **Qwen2.5-Coder-32B**
   (`local-mlx-coder32b`, `:18111`) as the `PI_CODER_TIER=large` alternative —

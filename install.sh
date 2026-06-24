@@ -623,8 +623,8 @@ fi
 #     path via PI_CODER_TIER=small. Always available on arm64 (the 27B is up).
 #   local-mlx-coder32b — the 35GB dense 32B Coder, LARGE tier only (it
 #     can't co-reside with the resident 27B on a <112GB box).
-#   local-mlx-gemma431b — a reasoning alternate coder (Gemma-4-31B-it 8bit,
-#     ~33GB) on its own port :18112, LARGE tier only. Same one-track-with-80B
+#   local-mlx-gemma4 — a reasoning alternate coder (Gemma-4-31B-it QAT 4-bit,
+#     ~22GB) on its own port :18112, LARGE tier only. Same one-track-with-80B
 #     rule as the 32B; provisioned so an operator can point a worker at it.
 if [[ "$IS_ARM64" -eq 1 ]] && [[ -f "$MODELS_JSON" ]] && [[ -f "$TEMPLATE" ]]; then
   echo ""
@@ -641,11 +641,11 @@ if [[ "$IS_ARM64" -eq 1 ]] && [[ -f "$MODELS_JSON" ]] && [[ -f "$TEMPLATE" ]]; t
     if [[ "$rc" -ne 0 ]]; then
       echo "  WARNING: 32B provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
     fi
-    echo "=== Code Worker (alt, reasoning): ensuring local-mlx-gemma431b in $MODELS_JSON ==="
+    echo "=== Code Worker (alt, reasoning): ensuring local-mlx-gemma4 in $MODELS_JSON ==="
     rc=0
-    merge_provider "$MODELS_JSON" "$TEMPLATE" "local-mlx-gemma431b" || rc=$?
+    merge_provider "$MODELS_JSON" "$TEMPLATE" "local-mlx-gemma4" || rc=$?
     if [[ "$rc" -ne 0 ]]; then
-      echo "  WARNING: gemma431b provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
+      echo "  WARNING: gemma4 provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
     fi
   else
     echo "=== Code Worker: 32B skipped (small tier — 27B serves the Coder via local-mlx-coder27b) ==="
@@ -664,7 +664,7 @@ fi
 # On arm64 we set defaultProvider=local-mlx + defaultModel=~/models/Qwen3.5-27B-4bit
 # (the deployed thinking-adversary session model; the id is the literal model dir
 # because mlx_lm.server resolves the request `model` as a path). Gemma-4-31B is
-# provisioned as an alt coder (local-mlx-gemma431b) but is NOT the default —
+# provisioned as an alt coder (local-mlx-gemma4) but is NOT the default —
 # point a worker at it explicitly with --provider/--model.
 # We do clobber a pre-existing `ollama` default — and the older local-mlx
 # default `qwen3-coder-30b-a3b` (the legacy sft base) — because those are
@@ -762,7 +762,7 @@ if [[ "$MEM_TIER" == "large" ]]; then
   echo "   Role → model map (RPI), 128GB-class:"
   echo "     Session / Adversary / Researcher / Planner → Qwen3.5-27B-4bit (local-mlx, :18080)"
   echo "     Code Worker / Implementor                  → Qwen2.5-Coder-32B-Instruct-8bit (local-mlx-coder32b, :18111)"
-  echo "     Code Worker (alt, reasoning)               → Gemma-4-31B-it 8bit (local-mlx-gemma431b, :18112)"
+  echo "     Code Worker (alt, reasoning)               → Gemma-4-31B-it QAT 4-bit (local-mlx-gemma4, :18112)"
   echo "     27B + 32B co-reside; the 80B (local-mlx-80b, :18130) is a MANUAL single-session"
   echo "     alternate — one heavy track at a time, spawns no parallel agents."
 else
