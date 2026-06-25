@@ -113,7 +113,7 @@
         "supportsReasoningEffort": false
       },
       "models": [
-        { "id": "gemma-4-31B-it-qat-GGUF", "name": "Gemma-4-31B-it QAT (llama.cpp GGUF + MTP draft, ~2x decode, non-thinking)", "contextWindow": 8192 }
+        { "id": "gemma-4-31B-it-qat-GGUF", "name": "Gemma-4-31B-it QAT (llama.cpp GGUF + MTP draft, ~2x decode, non-thinking)", "contextWindow": 262144 }
       ]
     }
   }
