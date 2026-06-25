@@ -109,11 +109,15 @@ via pi** (stable). Thinking-on is strong too but currently only safe on the
 **raw API** path (`tooling/bench/adversary-bench.py`), not `pi -p`, until the
 reasoning-stream OOM is fixed.
 
-**Speculative decoding** was removed (the standalone E2B draft gave ~1.6x on
-short gens but tripped a Metal GPU command-buffer timeout under agentic
-prompts). The linked MTP drafter (`gemma-4-31B-it-assistant`) is unusable —
-mlx_lm has no `gemma4_assistant` class. Proper MTP drafting is a tracked
-follow-up: ml-explore/mlx-lm #1276 (model class) + #990 (MTP spec-decode loop).
+**Speculative decoding (MTP):** the working path on the served Gemma-4 QAT
+model is **llama.cpp**, not mlx-lm. A definitive 2026-06-25 impl×model matrix
+(my-macbook DECISIONS/CHANGELOG 2026-06-25) measured llama.cpp QAT **1.65–1.77×**
+(no sliding-window cliff, loop-safe) vs **no net win** for the mlx-lm spec-decode
+path on QAT (structural 1024 cliff + a bf16 head mis-distilled for QAT). Opt in
+via the parallel `local-llama-gemma4` provider (`server/llama-server.sh up
+gemma4-llama`, :18113; ENVIRONMENT.md §9a). The earlier mlx-lm work (E2B/`gemma4_assistant`
+head, #1276/#990) is preserved but dormant — MLX-parity is future work
+(my-macbook `TODO-pitools.md`).
 
 ### How roles reach their model
 

@@ -6,7 +6,7 @@ selection, the pi harness runtime (coder/research/planner workers,
 adversary, quorum), containerization, install-time provisioning, and the
 git hooks.
 
-**Surveyed:** `~/src/pi-tools` on branch `gemma4-qat-consolidation`
+**Surveyed:** `~/src/pi-tools` on branch `gemma4-llama-server-mtp`
 (superset of `main`/`gemma-models`; the `MLX_MTP_*` vars are
 branch-specific and now decoupled/dormant — see §9). Searched `*.sh`, `*.py`,
 `*.ts`/`*.js`, `*.conf`, `Dockerfile*`, READMEs, across `server/`,
@@ -29,8 +29,8 @@ override.
 `my-macbook/tooling`, not this repo. Confirmed: no `CLAUDE_` reference
 anywhere under `~/src/pi-tools` (excluding `.git`/`node_modules`).
 
-Total operator-facing vars indexed: **49** (46 on `main`/`gemma-models`
-+ 3 branch-specific MTP vars).
+Total operator-facing vars indexed: **52** (46 on `main`/`gemma-models`
++ 3 MLX MTP vars + 3 llama-server MTP vars §9a).
 
 ---
 
@@ -164,9 +164,51 @@ see §1 `HOST`. There is no separate container-only port var.)
 
 ---
 
-## 9. MTP speculative-decode draft (decoupled/dormant)
+## 9. MTP speculative-decode draft (MLX dormant; the working path is llama.cpp)
 
-**No serving row runs an MTP draft by default.** The gemma MTP
+> **2026-06-25 — where MTP drafting actually pays off.** A definitive
+> impl×model matrix (my-macbook DECISIONS/CHANGELOG 2026-06-25) settled that
+> MTP drafting on the served Gemma-4 QAT model **works via llama.cpp, not the
+> mlx-lm spec-decode path**: llama.cpp QAT **1.65–1.77×** (no 1024 sliding-window
+> cliff, loop-safe), 8-bit **2.14–2.44×**; the MLX path gets no net win on QAT
+> (structural cliff + a head mis-distilled for QAT). The opt-in **llama-server
+> row** below is the deploy candidate; the MLX `MLX_MTP_DRAFT_*` infra (next
+> sub-section) stays intact but dormant.
+
+### 9a. llama-server MTP row (`server/llama-server.sh`, opt-in)
+
+A sibling launcher to `mlx-server.sh`, purpose-built for llama.cpp `llama-server`
+rows that serve a GGUF + an MTP draft GGUF. Rows live in
+`extra-models/llama.conf`; the shipped row is `gemma4-llama` (:18113) =
+unsloth Gemma-4-31B QAT GGUF + its natively-distilled Q4_0 MTP head. Drive a pi
+session with the `local-llama-gemma4` provider.
+
+```
+llama-server.sh up   gemma4-llama    # ~2x decode vs the mlx gemma4 row
+llama-server.sh down gemma4-llama    # reaps by port (llama-gated)
+llama-server.sh status
+```
+
+The launcher always adds `--spec-type draft-mtp --spec-draft-n-max <n> -ngl 999
+-fa on --jinja --reasoning off`. **`--reasoning off` is deliberate**: it matches
+the non-thinking gemma4 contract and keeps `reasoning_content` out of the
+response, so pi's openai-completions provider gets plain content + **native
+tool_calls** (verified — no message_end shim needed, unlike the dense-coder
+path). It does **not** flip any coder/adversary default; it runs parallel to the
+mlx `gemma4` row on :18112 (left intact). Overrides: `LLAMA_SERVER_BIN`,
+`LLAMA_CTX` (default 8192), `LLAMA_SPEC_N_MAX` (default 2 — the agentic sweet
+spot; K=3/4 add acceptance but lose throughput). Tune `-ngl`/`-c` on non-M5
+hosts. Requires `brew install llama.cpp` (≥ the 2026-06-07 `draft-mtp` build).
+
+| Var | Controls | Default | Values | Consumed at |
+|-----|----------|---------|--------|-------------|
+| `LLAMA_SERVER_BIN` | Path to the `llama-server` binary | `$(command -v llama-server)`, else `/opt/homebrew/bin/llama-server` | absolute path | `server/llama-server.sh` (launch) |
+| `LLAMA_CTX` | `-c` context window for a row when its config omits the 7th column | `8192` | integer | `server/llama-server.sh` (per-row default) |
+| `LLAMA_SPEC_N_MAX` | `--spec-draft-n-max` (MTP draft tokens per round) when the row omits the 6th column | `2` (agentic sweet spot on this M5 Max) | integer | `server/llama-server.sh` (per-row default) |
+
+### 9b. MLX `MLX_MTP_DRAFT_*` infrastructure (dormant)
+
+**No serving row runs an MLX MTP draft by default.** The gemma MTP
 speculative-decode work — the bf16 `gemma4_assistant` draft head, the venv
 mlx-lm `gemma4-assistant-mtp` branch, and the `MLX_GEMMA4_FULL_SLIDING_KV`
 full-retention KV mode — targeted the now-removed Gemma 8-bit weights. With the

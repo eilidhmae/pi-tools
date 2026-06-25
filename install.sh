@@ -50,6 +50,7 @@
 # invoke it directly from the pi-tools checkout):
 #
 #   server/mlx-server.sh                       Qwen track + extra-models
+#   server/llama-server.sh                     llama.cpp MTP rows (gemma4-llama)
 
 set -euo pipefail
 
@@ -436,7 +437,7 @@ chmod +x "${SCRIPTS_DIR}/gen-review-revise.sh"
 # mlx-server.sh and the mlx-lm-multi/mola launchers reference each other
 # by SCRIPT_DIR-relative paths, so they must run from the pi-tools tree.
 # Installing them under ~/.pi/agent/ would break those relative paths.
-for launcher in mlx-server.sh bootstrap-mac.sh upgrade.sh; do
+for launcher in mlx-server.sh llama-server.sh bootstrap-mac.sh upgrade.sh; do
   [[ -f "$SCRIPT_DIR/server/$launcher" ]] && chmod +x "$SCRIPT_DIR/server/$launcher"
 done
 for sh in "$SCRIPT_DIR/server/mlx-lm-multi"/*.sh "$SCRIPT_DIR/server/mola"/*.sh \
@@ -646,6 +647,16 @@ if [[ "$IS_ARM64" -eq 1 ]] && [[ -f "$MODELS_JSON" ]] && [[ -f "$TEMPLATE" ]]; t
     merge_provider "$MODELS_JSON" "$TEMPLATE" "local-mlx-gemma4" || rc=$?
     if [[ "$rc" -ne 0 ]]; then
       echo "  WARNING: gemma4 provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
+    fi
+    # llama.cpp MTP variant of the gemma4 row (opt-in; served by
+    # server/llama-server.sh on :18113, ~2x decode via the unsloth QAT GGUF +
+    # MTP draft — my-macbook DECISIONS 2026-06-25). Additive provider; does not
+    # change any default. Harmless if the row is never launched.
+    echo "=== Code Worker (alt, llama.cpp MTP): ensuring local-llama-gemma4 in $MODELS_JSON ==="
+    rc=0
+    merge_provider "$MODELS_JSON" "$TEMPLATE" "local-llama-gemma4" || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+      echo "  WARNING: llama-gemma4 provider merge failed (python3 exit $rc); inspect $MODELS_JSON manually"
     fi
   else
     echo "=== Code Worker: 32B skipped (small tier — 27B serves the Coder via local-mlx-coder27b) ==="

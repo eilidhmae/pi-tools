@@ -103,6 +103,18 @@
       "models": [
         { "id": "mlx-community/gemma-4-31B-it-qat-OptiQ-4bit", "name": "Gemma-4-31B-it (MLX QAT 4-bit, reasoning coder; thinking via --thinking)", "reasoning": true, "contextWindow": 262144 }
       ]
+    },
+    "local-llama-gemma4": {
+      "baseUrl": "http://127.0.0.1:18113/v1",
+      "api": "openai-completions",
+      "apiKey": "local",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        { "id": "gemma-4-31B-it-qat-GGUF", "name": "Gemma-4-31B-it QAT (llama.cpp GGUF + MTP draft, ~2x decode, non-thinking)", "contextWindow": 8192 }
+      ]
     }
   }
 }
