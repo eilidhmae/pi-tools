@@ -14,9 +14,7 @@
 # Established on this M5 Max by the 2026-06-25 definitive MTP matrix: drafting
 # pays off via llama.cpp (Gemma-4 QAT 1.65–1.77×, no sliding-window cliff,
 # loop-safe) but NOT via the mlx-lm spec-decode path on the served QAT model.
-# `--reasoning off` is deliberate — it matches the non-thinking gemma4 contract
-# and suppresses the `reasoning_content` field so pi's openai-completions
-# provider gets plain content + native tool_calls (no shim). See my-macbook
+# `--reasoning on` is used to enable reasoning_content for the provider. See my-macbook
 # DECISIONS/CHANGELOG 2026-06-25 and tooling/speculative-decoding/.
 #
 # Rows live in extra-models/llama.conf. Usage:
@@ -165,7 +163,7 @@ row_up() {
     --spec-draft-model "$draft" \
     --spec-type draft-mtp \
     --spec-draft-n-max "$ndraft" \
-    -ngl 999 -fa on --jinja --reasoning off \
+    -ngl 999 -fa on --jinja --reasoning on \
     --alias "$alias" \
     --host "$HOST" --port "$port" -c "$ctx" \
     >>"$lf" 2>&1 &
